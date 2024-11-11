@@ -2,139 +2,149 @@ import pandas as pd
 import ccxt
 from pycoingecko import CoinGeckoAPI
 import streamlit as st
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import time
+import random
 
 # Initialize APIs
 cg = CoinGeckoAPI()
 
-# Initialize CCXT exchange (using Binance as primary source)
-try:
-    exchange = ccxt.binance()
-except Exception as e:
-    st.warning(f"Failed to initialize CCXT exchange: {str(e)}")
-    exchange = None
+# Initialize CCXT exchanges with proper error handling
+def init_exchanges() -> List[ccxt.Exchange]:
+    exchanges = []
+    exchange_ids = ['kraken', 'coinbasepro', 'kucoin']  # Added KuCoin as another fallback
+    
+    for exchange_id in exchange_ids:
+        try:
+            exchange = getattr(ccxt, exchange_id)()
+            exchanges.append(exchange)
+        except Exception as e:
+            st.warning(f"Failed to initialize {exchange_id}: {str(e)}")
+    
+    return exchanges
+
+# Initialize exchanges
+exchanges = init_exchanges()
+
+def retry_api_call(func, max_retries=3, delay=1):
+    """Retry API calls with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(delay * (2 ** attempt))
+            continue
+    return None
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
-    """Fetch cryptocurrency data using CCXT with CoinGecko fallback."""
+    """Fetch cryptocurrency data using multiple exchanges with fallback."""
     try:
         # Convert days to milliseconds for CCXT
         timeframe = '1d'
         if int(days) <= 7:
             timeframe = '1h'
         
-        if exchange:
+        for exchange in exchanges:
             try:
                 # Get symbol in CCXT format
                 symbol = f"{coin_id.upper()}/USDT"
                 
-                # Fetch OHLCV data
-                ohlcv = exchange.fetch_ohlcv(
-                    symbol,
-                    timeframe,
-                    limit=int(days) * (24 if timeframe == '1h' else 1)
-                )
+                def fetch_data():
+                    return exchange.fetch_ohlcv(
+                        symbol,
+                        timeframe,
+                        limit=int(days) * (24 if timeframe == '1h' else 1)
+                    )
                 
-                # Create DataFrame
-                df = pd.DataFrame(
-                    ohlcv,
-                    columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                )
+                # Fetch OHLCV data with retry logic
+                ohlcv = retry_api_call(fetch_data)
                 
-                # Convert timestamp to datetime
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                df.set_index('timestamp', inplace=True)
-                
-                # Use close price as the main price
-                df['price'] = df['close']
-                
-                return df[['price', 'volume']]
-                
+                if ohlcv:
+                    # Create DataFrame
+                    df = pd.DataFrame(
+                        ohlcv,
+                        columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                    )
+                    
+                    # Convert timestamp to datetime
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df.set_index('timestamp', inplace=True)
+                    
+                    # Use close price as the main price
+                    df['price'] = df['close']
+                    
+                    return df[['price', 'volume']]
+                    
             except Exception as e:
-                st.warning(f"CCXT error: {str(e)}. Falling back to CoinGecko.")
+                st.warning(f"Exchange {exchange.id} error: {str(e)}. Trying next exchange...")
+                continue
         
         # Fallback to CoinGecko
-        data = cg.get_coin_market_chart_by_id(
-            id=coin_id,
-            vs_currency='usd',
-            days=days
+        st.info("Using CoinGecko as fallback data source...")
+        data = retry_api_call(
+            lambda: cg.get_coin_market_chart_by_id(
+                id=coin_id,
+                vs_currency='usd',
+                days=days
+            )
         )
         
-        df = pd.DataFrame({
-            'timestamp': [pd.to_datetime(ts, unit='ms') for ts, _ in data['prices']],
-            'price': [p for _, p in data['prices']],
-            'volume': [v for _, v in data['total_volumes']]
-        })
-        
-        df.set_index('timestamp', inplace=True)
-        return df
-        
+        if data:
+            df = pd.DataFrame({
+                'timestamp': [pd.to_datetime(ts, unit='ms') for ts, _ in data['prices']],
+                'price': [p for _, p in data['prices']],
+                'volume': [v for _, v in data['total_volumes']]
+            })
+            
+            df.set_index('timestamp', inplace=True)
+            return df
+            
     except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
-        return pd.DataFrame()
+        error_msg = _handle_api_error(e)
+        st.error(error_msg)
+    
+    return pd.DataFrame()
 
 @st.cache_data(ttl=300)
 def get_bitcoin_dominance(days: str) -> pd.DataFrame:
-    """Calculate Bitcoin dominance using CCXT market data with CoinGecko fallback."""
+    """Calculate Bitcoin dominance using CoinGecko global market data."""
     try:
-        if exchange:
-            try:
-                # Get BTC price and volume
-                btc_data = get_crypto_data('bitcoin', days)
-                
-                # Get total market data from exchange tickers
-                tickers = exchange.fetch_tickers()
-                total_volume = 0
-                total_market_cap = 0
-                
-                for symbol, ticker in tickers.items():
-                    if symbol.endswith('/USDT'):
-                        price = ticker.get('last', 0)
-                        volume = ticker.get('quoteVolume', 0)
-                        total_volume += volume
-                        # Estimate market cap (this is approximate)
-                        if 'info' in ticker and 'weightedAvgPrice' in ticker['info']:
-                            total_market_cap += float(ticker['info']['weightedAvgPrice']) * volume
-                
-                # Calculate dominance
-                btc_market_cap = btc_data['price'].iloc[-1] * btc_data['volume'].iloc[-1]
-                dominance = (btc_market_cap / total_market_cap * 100) if total_market_cap > 0 else 0
-                
-                # Create DataFrame with calculated dominance
-                dates = pd.date_range(
-                    end=datetime.now(),
-                    periods=int(days),
-                    freq='D'
-                )
-                
-                df = pd.DataFrame({
-                    'timestamp': dates,
-                    'btc_dominance': [dominance] * len(dates)
-                })
-                
-                df.set_index('timestamp', inplace=True)
-                return df
-                
-            except Exception as e:
-                st.warning(f"CCXT market data error: {str(e)}. Falling back to CoinGecko.")
-        
-        # Fallback to CoinGecko
-        btc_data = cg.get_coin_market_chart_by_id(
-            id='bitcoin',
-            vs_currency='usd',
-            days=days
+        # Get Bitcoin market cap data
+        btc_data = retry_api_call(
+            lambda: cg.get_coin_market_chart_by_id(
+                id='bitcoin',
+                vs_currency='usd',
+                days=days
+            )
         )
         
-        global_data = cg.get_global_market_chart_by_id(
-            vs_currency='usd',
-            days=days
+        # Get global market data using correct endpoint
+        global_data = retry_api_call(
+            lambda: cg.get_global_market_chart(
+                vs_currency='usd',
+                days=days
+            )
         )
         
-        # Process Bitcoin market cap data
-        btc_market_caps = [(pd.to_datetime(ts, unit='ms'), mc) for ts, mc in btc_data['market_caps']]
-        global_market_caps = [(pd.to_datetime(ts, unit='ms'), mc) for ts, mc in global_data['market_caps']]
+        if not btc_data or not global_data:
+            raise Exception("Failed to fetch market data")
+        
+        # Validate and process data
+        btc_market_caps = []
+        global_market_caps = []
+        
+        for btc_point, global_point in zip(btc_data['market_caps'], global_data['total_market_cap']):
+            if all(isinstance(x, (int, float)) for x in [btc_point[1], global_point[1]]):
+                timestamp = pd.to_datetime(btc_point[0], unit='ms')
+                btc_market_caps.append((timestamp, btc_point[1]))
+                global_market_caps.append((timestamp, global_point[1]))
+        
+        if not btc_market_caps or not global_market_caps:
+            raise Exception("Invalid market cap data received")
         
         # Create DataFrame
         df = pd.DataFrame({
@@ -143,8 +153,14 @@ def get_bitcoin_dominance(days: str) -> pd.DataFrame:
             'total_market_cap': [mc for _, mc in global_market_caps]
         })
         
-        # Calculate dominance percentage
-        df['btc_dominance'] = (df['btc_market_cap'] / df['total_market_cap']) * 100
+        # Calculate dominance percentage with validation
+        df['btc_dominance'] = df.apply(
+            lambda row: (row['btc_market_cap'] / row['total_market_cap'] * 100)
+            if row['total_market_cap'] > 0 else 0,
+            axis=1
+        )
+        
+        # Clean and validate the data
         df['btc_dominance'] = df['btc_dominance'].fillna(0).clip(0, 100)
         
         df.set_index('timestamp', inplace=True)
@@ -156,13 +172,17 @@ def get_bitcoin_dominance(days: str) -> pd.DataFrame:
         return pd.DataFrame({'btc_dominance': []})
 
 def _handle_api_error(error: Exception) -> str:
-    """Handle API errors and return appropriate error messages."""
+    """Handle API errors with detailed error messages."""
     error_msg = str(error)
     if "429" in error_msg:
-        return "Rate limit exceeded. Please try again in a few minutes."
+        return "Rate limit exceeded. Please wait a few minutes and try again."
     elif "404" in error_msg:
-        return "Data not found. Please check if the API endpoint is correct."
+        return "Data not found. The requested cryptocurrency might not be supported."
     elif "connection" in error_msg.lower():
-        return "Connection error. Please check your internet connection."
+        return "Network connection error. Please check your internet connection and try again."
+    elif "forbidden" in error_msg.lower() or "restricted" in error_msg.lower():
+        return "Access denied. The service might be restricted in your region."
+    elif "timeout" in error_msg.lower():
+        return "Request timed out. The server might be experiencing high load."
     else:
-        return f"API error: {error_msg}"
+        return f"API error: {error_msg}. Please try again later."

@@ -1,0 +1,78 @@
+CCXT error: binance GET https://api.binance.com/api/v3/exchangeInfo 451 { "code": 0, "msg": "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms. Please contact customer service if you believe you received this message in error." }. Falling back to CoinGecko.
+
+Current Price
+
+$88,879.08
+40.47%
+24h Volume
+
+$43,809,804,907
+Volatility
+
+0.50%
+Social Media & News Sentiment Analysis
+Sentiment analysis combines data from multiple sources including RSS feeds, price movements, and social media. Hover over the metrics to see more details about confidence scores and data sources.
+
+BITCOIN
+Twitter API error: 401 Unauthorized Unauthorized
+
+⚠️ Error analyzing bitcoin: Some sources failed: CryptoCompare
+
+main()str'\n Some data sources might be temporarily unavailable. \n The analysis will continue with available sources.\n Try refreshing in a few minutes if the issue persists.\n '
+str(object='') -> str
+str(bytes_or_buffer[, encoding[, errors]]) -> str
+
+Create a new string object from the given object. If encoding or
+errors is specified, then the object must expose a data buffer
+that will be decoded using the given encoding and error handler.
+Otherwise, returns the result of object.__str__() (if defined)
+or repr(object).
+encoding defaults to sys.getdefaultencoding().
+errors defaults to 'strict'.
+capitalizebuiltin_function_or_method	Return a capitalized version of the string.
+casefoldbuiltin_function_or_method	Return a version of the string suitable for caseless comparisons.
+centerbuiltin_function_or_method	Return a centered string of length width.
+countbuiltin_function_or_method	S.count(sub[, start[, end]]) -> int
+encodebuiltin_function_or_method	Encode the string using the codec registered for encoding.
+endswithbuiltin_function_or_method	S.endswith(suffix[, start[, end]]) -> bool
+expandtabsbuiltin_function_or_method	Return a copy where all tab characters are expanded using spaces.
+findbuiltin_function_or_method	S.find(sub[, start[, end]]) -> int
+formatbuiltin_function_or_method	S.format(*args, **kwargs) -> str
+format_mapbuiltin_function_or_method	S.format_map(mapping) -> str
+indexbuiltin_function_or_method	S.index(sub[, start[, end]]) -> int
+isalnumbuiltin_function_or_method	Return True if the string is an alpha-numeric string, False otherwise.
+isalphabuiltin_function_or_method	Return True if the string is an alphabetic string, False otherwise.
+isasciibuiltin_function_or_method	Return True if all characters in the string are ASCII, False otherwise.
+isdecimalbuiltin_function_or_method	Return True if the string is a decimal string, False otherwise.
+isdigitbuiltin_function_or_method	Return True if the string is a digit string, False otherwise.
+isidentifierbuiltin_function_or_method	Return True if the string is a valid Python identifier, False otherwise.
+islowerbuiltin_function_or_method	Return True if the string is a lowercase string, False otherwise.
+isnumericbuiltin_function_or_method	Return True if the string is a numeric string, False otherwise.
+isprintablebuiltin_function_or_method	Return True if the string is printable, False otherwise.
+isspacebuiltin_function_or_method	Return True if the string is a whitespace string, False otherwise.
+istitlebuiltin_function_or_method	Return True if the string is a title-cased string, False otherwise.
+isupperbuiltin_function_or_method	Return True if the string is an uppercase string, False otherwise.
+joinbuiltin_function_or_method	Concatenate any number of strings.
+ljustbuiltin_function_or_method	Return a left-justified string of length width.
+lowerbuiltin_function_or_method	Return a copy of the string converted to lowercase.
+lstripbuiltin_function_or_method	Return a copy of the string with leading whitespace removed.
+maketransbuiltin_function_or_method	Return a translation table usable for str.translate().
+partitionbuiltin_function_or_method	Partition the string into three parts using the given separator.
+removeprefixbuiltin_function_or_method	Return a str with the given prefix string removed if present.
+removesuffixbuiltin_function_or_method	Return a str with the given suffix string removed if present.
+replacebuiltin_function_or_method	Return a copy with all occurrences of substring old replaced by new.
+rfindbuiltin_function_or_method	S.rfind(sub[, start[, end]]) -> int
+rindexbuiltin_function_or_method	S.rindex(sub[, start[, end]]) -> int
+rjustbuiltin_function_or_method	Return a right-justified string of length width.
+rpartitionbuiltin_function_or_method	Partition the string into three parts using the given separator.
+rsplitbuiltin_function_or_method	Return a list of the substrings in the string, using sep as the separator string.
+rstripbuiltin_function_or_method	Return a copy of the string with trailing whitespace removed.
+splitbuiltin_function_or_method	Return a list of the substrings in the string, using sep as the separator string.
+splitlinesbuiltin_function_or_method	Return a list of the lines in the string, breaking at line boundaries.
+startswithbuiltin_function_or_method	S.startswith(prefix[, start[, end]]) -> bool
+stripbuiltin_function_or_method	Return a copy of the string with leading and trailing whitespace removed.
+swapcasebuiltin_function_or_method	Convert uppercase characters to lowercase and lowercase characters to uppercase.
+titlebuiltin_function_or_method	Return a version of the string where each word is titlecased.
+translatebuiltin_function_or_method	Replace each character in the string using the given translation table.
+upperbuiltin_function_or_method	Return a copy of the string converted to uppercase.
+zfillbuiltin_function_or_method	Pad a numeric string with zeros on the left, to fill a field of the given width.
