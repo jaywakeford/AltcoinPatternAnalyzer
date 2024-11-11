@@ -111,7 +111,7 @@ def render_dominance_chart(timeframe):
     
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dominance_df['timestamp'],
+        x=dominance_df.index,
         y=dominance_df['btc_dominance'],
         name="BTC Dominance",
         fill='tozeroy',

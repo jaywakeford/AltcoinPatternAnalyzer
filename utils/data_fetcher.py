@@ -32,9 +32,9 @@ def get_bitcoin_dominance(days: str) -> pd.DataFrame:
     try:
         data = cg.get_global_history(days=days)
         df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df.index)
-        df['btc_dominance'] = df['market_cap_percentage']['btc']
-        return df[['timestamp', 'btc_dominance']]
+        df.index = pd.to_datetime(df.index)
+        df['btc_dominance'] = df['market_cap_percentage'].apply(lambda x: x['btc'])
+        return df[['btc_dominance']]
     except Exception as e:
         st.error(f"Error fetching dominance data: {str(e)}")
         return pd.DataFrame()
