@@ -8,4 +8,7 @@ dependencies = [
     "plotly>=5.24.1",
     "pycoingecko>=3.1.0",
     "streamlit>=1.40.1",
+    "textblob>=0.18.0.post0",
+    "tweepy>=4.14.0",
+    "vadersentiment>=3.3.2",
 ]

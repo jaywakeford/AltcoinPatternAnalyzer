@@ -2,6 +2,7 @@ import streamlit as st
 from components.sidebar import render_sidebar
 from components.charts import render_price_charts, render_dominance_chart
 from components.metrics import render_market_metrics
+from components.sentiment import render_sentiment_analysis
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
 import plotly.io as pio
@@ -30,6 +31,9 @@ def main():
     # Market metrics section
     col1, col2, col3 = st.columns(3)
     render_market_metrics(df_btc, col1, col2, col3)
+    
+    # Sentiment Analysis section
+    render_sentiment_analysis(selected_coins)
     
     # Charts section
     st.subheader("Price Analysis")
