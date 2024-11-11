@@ -36,18 +36,16 @@ class SentimentAnalyzer:
 
     def _init_twitter_client(self) -> None:
         """Initialize Twitter API client."""
-        required_keys = [
-            'TWITTER_API_KEY',
-            'TWITTER_API_SECRET',
-            'TWITTER_ACCESS_TOKEN',
-            'TWITTER_ACCESS_TOKEN_SECRET'
-        ]
-        
-        if not all(key in os.environ for key in required_keys):
-            st.info("Twitter API credentials not found. Twitter sentiment analysis will be disabled.")
-            return
-            
         try:
+            auth = tweepy.OAuthHandler(
+                os.environ['TWITTER_API_KEY'],
+                os.environ['TWITTER_API_SECRET']
+            )
+            auth.set_access_token(
+                os.environ['TWITTER_ACCESS_TOKEN'],
+                os.environ['TWITTER_ACCESS_TOKEN_SECRET']
+            )
+            
             self.twitter_client = tweepy.Client(
                 consumer_key=os.environ['TWITTER_API_KEY'],
                 consumer_secret=os.environ['TWITTER_API_SECRET'],
@@ -60,7 +58,7 @@ class SentimentAnalyzer:
             st.warning(f"Twitter API initialization failed: {str(e)}")
 
     @st.cache_data(ttl=300)  # Cache for 5 minutes
-    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:  # Added underscore to self parameter
+    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:
         """Get aggregated sentiment from multiple sources."""
         sources_data = []
         all_scores = []
@@ -193,8 +191,8 @@ class SentimentAnalyzer:
     def _analyze_cryptocompare_news(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from CryptoCompare news."""
         try:
-            # Using cryptocompare's news endpoint
-            news_list = cryptocompare.get_news()
+            # Using cryptocompare's news endpoint correctly
+            news_list = cryptocompare.get_latest_news()
             scores = []
             
             for article in news_list[:20]:  # Analyze last 20 news articles

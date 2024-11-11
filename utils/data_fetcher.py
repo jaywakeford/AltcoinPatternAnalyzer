@@ -30,11 +30,32 @@ def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
 def get_bitcoin_dominance(days: str) -> pd.DataFrame:
     """Fetch Bitcoin dominance data."""
     try:
+        # Get global market data from CoinGecko
         data = cg.get_global_history(days=days)
-        df = pd.DataFrame(data)
-        df.index = pd.to_datetime(df.index)
-        df['btc_dominance'] = df['market_cap_percentage'].apply(lambda x: x['btc'])
-        return df[['btc_dominance']]
+        
+        # Create DataFrame with proper structure
+        df = pd.DataFrame(columns=['btc_dominance'])
+        
+        # Process the data
+        dates = []
+        dominance_values = []
+        
+        for date, daily_data in data.items():
+            try:
+                dates.append(pd.to_datetime(date))
+                dominance_values.append(daily_data['market_cap_percentage']['btc'])
+            except (KeyError, TypeError) as e:
+                st.warning(f"Missing data for date {date}: {str(e)}")
+                continue
+        
+        # Create DataFrame with processed data
+        df = pd.DataFrame({
+            'btc_dominance': dominance_values
+        }, index=dates)
+        
+        return df
+        
     except Exception as e:
         st.error(f"Error fetching dominance data: {str(e)}")
-        return pd.DataFrame()
+        # Return empty DataFrame with correct column
+        return pd.DataFrame(columns=['btc_dominance'])

@@ -109,20 +109,32 @@ def render_dominance_chart(timeframe):
     """Render Bitcoin dominance chart."""
     dominance_df = get_bitcoin_dominance(timeframe)
     
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=dominance_df.index,
-        y=dominance_df['btc_dominance'],
-        name="BTC Dominance",
-        fill='tozeroy',
-        line=dict(color='#F7931A')
-    ))
+    # Check if DataFrame is empty or missing required column
+    if dominance_df.empty:
+        st.warning("Unable to fetch Bitcoin dominance data. Please try again later.")
+        return
     
-    fig.update_layout(
-        title="Bitcoin Market Dominance",
-        yaxis_title="Dominance (%)",
-        template="plotly_dark",
-        height=400
-    )
+    if 'btc_dominance' not in dominance_df.columns:
+        st.error("Invalid data format: Bitcoin dominance data is not available.")
+        return
     
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=dominance_df.index,
+            y=dominance_df['btc_dominance'],
+            name="BTC Dominance",
+            fill='tozeroy',
+            line=dict(color='#F7931A')
+        ))
+        
+        fig.update_layout(
+            title="Bitcoin Market Dominance",
+            yaxis_title="Dominance (%)",
+            template="plotly_dark",
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error rendering dominance chart: {str(e)}")
