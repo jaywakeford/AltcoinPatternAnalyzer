@@ -4,9 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "cryptocompare>=0.7.6",
+    "feedparser>=6.0.11",
+    "nltk>=3.9.1",
     "openai>=1.54.3",
     "plotly>=5.24.1",
     "pycoingecko>=3.1.0",
+    "requests>=2.32.3",
     "streamlit>=1.40.1",
     "textblob>=0.18.0.post0",
     "tweepy>=4.14.0",

@@ -1,96 +1,221 @@
 import os
-import tweepy
+import feedparser
+import cryptocompare
 import nltk
-from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-from datetime import datetime, timedelta
 import streamlit as st
+from datetime import datetime
+from typing import Dict, List, Optional
+import tweepy
 
 class SentimentAnalyzer:
     def __init__(self):
-        # Download required NLTK data
+        # Initialize VADER sentiment analyzer
+        self.vader = SentimentIntensityAnalyzer()
+        
+        # Download required NLTK data with proper error handling
         try:
-            nltk.download('punkt', quiet=True)
-            nltk.download('averaged_perceptron_tagger', quiet=True)
-        except Exception as e:
-            st.warning(f"Warning: Could not download NLTK data. Some features might be limited. {str(e)}")
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            try:
+                with st.spinner('Downloading required NLTK data...'):
+                    nltk.download('punkt', quiet=True)
+            except Exception as e:
+                st.warning(f"Could not download NLTK data: {str(e)}")
+        
+        # RSS feeds for major crypto news sites
+        self.rss_feeds = [
+            "https://cointelegraph.com/rss",
+            "https://coindesk.com/arc/outboundfeeds/rss/",
+            "https://news.bitcoin.com/feed/",
+        ]
+        
+        # Initialize Twitter client
+        self.twitter_client = None
+        self._init_twitter_client()
 
-        # Initialize Twitter API client
+    def _init_twitter_client(self) -> None:
+        """Initialize Twitter API client."""
+        required_keys = [
+            'TWITTER_API_KEY',
+            'TWITTER_API_SECRET',
+            'TWITTER_ACCESS_TOKEN',
+            'TWITTER_ACCESS_TOKEN_SECRET'
+        ]
+        
+        if not all(key in os.environ for key in required_keys):
+            st.info("Twitter API credentials not found. Twitter sentiment analysis will be disabled.")
+            return
+            
         try:
-            auth = tweepy.OAuth1UserHandler(
-                os.environ.get('TWITTER_API_KEY', ''),
-                os.environ.get('TWITTER_API_SECRET', ''),
-                os.environ.get('TWITTER_ACCESS_TOKEN', ''),
-                os.environ.get('TWITTER_ACCESS_TOKEN_SECRET', '')
+            self.twitter_client = tweepy.Client(
+                consumer_key=os.environ['TWITTER_API_KEY'],
+                consumer_secret=os.environ['TWITTER_API_SECRET'],
+                access_token=os.environ['TWITTER_ACCESS_TOKEN'],
+                access_token_secret=os.environ['TWITTER_ACCESS_TOKEN_SECRET'],
+                wait_on_rate_limit=True
             )
-            self.twitter_api = tweepy.API(auth)
-            self.vader = SentimentIntensityAnalyzer()
+            st.success("Twitter API connection established successfully!")
         except Exception as e:
-            st.error(f"Error initializing Twitter API: {str(e)}")
-            self.twitter_api = None
-            self.vader = None
+            st.warning(f"Twitter API initialization failed: {str(e)}")
 
-    def get_twitter_sentiment(self, keyword: str, count: int = 100) -> dict:
-        """Analyze sentiment from recent tweets about a cryptocurrency."""
-        return self._get_cached_sentiment(keyword, count)
+    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:  # Added underscore to self parameter
+        """Get aggregated sentiment from multiple sources."""
+        sources_data = []
+        all_scores = []
+        all_samples = 0
 
-    @st.cache_data(ttl=300)
-    def _get_cached_sentiment(_self, keyword: str, count: int = 100) -> dict:
-        """Cached version of sentiment analysis."""
-        if not _self.twitter_api or not _self.vader:
+        # Analyze RSS feeds
+        rss_sentiment = _self._analyze_rss_feeds(keyword)
+        if rss_sentiment:
+            all_scores.extend(rss_sentiment['scores'])
+            all_samples += rss_sentiment['samples']
+            sources_data.append({
+                'name': 'RSS Feeds',
+                'score': rss_sentiment['average_score'],
+                'samples': rss_sentiment['samples']
+            })
+
+        # Analyze CryptoCompare news
+        cc_sentiment = _self._analyze_cryptocompare_news(keyword)
+        if cc_sentiment:
+            all_scores.extend(cc_sentiment['scores'])
+            all_samples += cc_sentiment['samples']
+            sources_data.append({
+                'name': 'CryptoCompare',
+                'score': cc_sentiment['average_score'],
+                'samples': cc_sentiment['samples']
+            })
+
+        # Analyze Twitter sentiment if available
+        if _self.twitter_client:
+            twitter_sentiment = _self._analyze_twitter_sentiment(keyword)
+            if twitter_sentiment:
+                all_scores.extend(twitter_sentiment['scores'])
+                all_samples += twitter_sentiment['samples']
+                sources_data.append({
+                    'name': 'Twitter',
+                    'score': twitter_sentiment['average_score'],
+                    'samples': twitter_sentiment['samples']
+                })
+
+        # Return neutral sentiment if no data available
+        if not all_scores:
             return {
                 'score': 0,
                 'samples': 0,
                 'timestamp': datetime.now().isoformat(),
                 'sentiment_category': 'neutral',
-                'error': 'Twitter API not initialized'
+                'error': None,
+                'sources': []
             }
 
+        # Calculate average sentiment
+        avg_sentiment = sum(all_scores) / len(all_scores)
+        
+        return {
+            'score': avg_sentiment * 100,  # Scale to -100 to 100
+            'samples': all_samples,
+            'timestamp': datetime.now().isoformat(),
+            'sentiment_category': _self._categorize_sentiment(avg_sentiment * 100),
+            'error': None,
+            'sources': sources_data
+        }
+
+    def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Analyze sentiment from Twitter."""
+        if not self.twitter_client:
+            return None
+
         try:
-            tweets = _self.twitter_api.search_tweets(
-                q=f"#{keyword} OR {keyword} crypto",
-                lang="en",
-                count=count,
-                tweet_mode="extended"
-            )
+            query = f"{keyword} crypto -is:retweet lang:en"
+            tweets = []
+            # Use tweepy.Paginator to handle pagination
+            for tweet in tweepy.Paginator(
+                self.twitter_client.search_recent_tweets,
+                query=query,
+                max_results=100,
+                tweet_fields=['text']
+            ).flatten(limit=100):
+                tweets.append(tweet)
             
-            vader_scores = []
-            textblob_scores = []
+            if not tweets:
+                return None
             
+            scores = []
             for tweet in tweets:
-                # Clean tweet text
-                text = tweet.full_text.lower()
-                
-                # VADER sentiment
-                vader_score = _self.vader.polarity_scores(text)
-                vader_scores.append(vader_score['compound'])
-                
-                # TextBlob sentiment
-                blob = TextBlob(text)
-                textblob_scores.append(blob.sentiment.polarity)
-            
-            # Calculate average sentiments
-            avg_vader = sum(vader_scores) / len(vader_scores) if vader_scores else 0
-            avg_textblob = sum(textblob_scores) / len(textblob_scores) if textblob_scores else 0
-            
-            # Normalize to -100 to 100 scale
-            normalized_sentiment = (avg_vader + avg_textblob) * 50
-            
+                sentiment = self.vader.polarity_scores(tweet.text)
+                scores.append(sentiment['compound'])
+
+            if not scores:
+                return None
+
             return {
-                'score': normalized_sentiment,
-                'samples': len(tweets),
-                'timestamp': datetime.now().isoformat(),
-                'sentiment_category': _self._categorize_sentiment(normalized_sentiment)
+                'scores': scores,
+                'average_score': sum(scores) / len(scores),
+                'samples': len(scores)
             }
+
         except Exception as e:
-            st.error(f"Error fetching Twitter sentiment: {str(e)}")
+            st.warning(f"Error analyzing Twitter sentiment: {str(e)}")
+            return None
+
+    def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
+        """Analyze sentiment from RSS feeds."""
+        scores = []
+        
+        for feed_url in self.rss_feeds:
+            try:
+                feed = feedparser.parse(feed_url)
+                if feed.bozo:  # Check if there was an error parsing the feed
+                    continue
+                
+                for entry in feed.entries[:10]:  # Analyze last 10 entries per feed
+                    if hasattr(entry, 'title') and hasattr(entry, 'description'):
+                        text = f"{entry.title}. {entry.description}"
+                        if keyword.lower() in text.lower():
+                            sentiment = self.vader.polarity_scores(text)
+                            scores.append(sentiment['compound'])
+            except Exception as e:
+                st.warning(f"Error parsing RSS feed {feed_url}: {str(e)}")
+                continue
+
+        if not scores:
+            return None
+
+        return {
+            'scores': scores,
+            'average_score': sum(scores) / len(scores),
+            'samples': len(scores)
+        }
+
+    def _analyze_cryptocompare_news(self, keyword: str) -> Optional[Dict]:
+        """Analyze sentiment from CryptoCompare news."""
+        try:
+            # Using cryptocompare's news endpoint
+            news_list = cryptocompare.get_news()
+            scores = []
+            
+            for article in news_list[:20]:  # Analyze last 20 news articles
+                if 'title' in article and 'body' in article:
+                    text = f"{article['title']}. {article['body']}"
+                    if keyword.lower() in text.lower():
+                        sentiment = self.vader.polarity_scores(text)
+                        scores.append(sentiment['compound'])
+
+            if not scores:
+                return None
+
             return {
-                'score': 0,
-                'samples': 0,
-                'timestamp': datetime.now().isoformat(),
-                'sentiment_category': 'neutral',
-                'error': str(e)
+                'scores': scores,
+                'average_score': sum(scores) / len(scores),
+                'samples': len(scores)
             }
+
+        except Exception as e:
+            st.warning(f"Error fetching CryptoCompare news: {str(e)}")
+            return None
 
     def _categorize_sentiment(self, score: float) -> str:
         """Categorize sentiment score into categories."""
@@ -98,5 +223,4 @@ class SentimentAnalyzer:
             return 'bullish'
         elif score <= -25:
             return 'bearish'
-        else:
-            return 'neutral'
+        return 'neutral'
