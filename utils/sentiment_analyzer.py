@@ -61,7 +61,7 @@ class SentimentAnalyzer:
         # Initialize Twitter client
         self.twitter_client = None
         self._init_twitter_client()
-
+        
         # Initialize rate limiters
         self.last_api_call = {}
         self.api_call_counts = {}
@@ -69,28 +69,31 @@ class SentimentAnalyzer:
     def _init_twitter_client(self) -> None:
         """Initialize Twitter API client with proper error handling."""
         try:
-            if not all(os.environ.get(key) for key in ['TWITTER_API_KEY', 'TWITTER_API_SECRET']):
+            # Check for required Twitter API credentials
+            required_keys = ['TWITTER_API_KEY', 'TWITTER_API_SECRET', 
+                           'TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_TOKEN_SECRET']
+            
+            if not all(os.environ.get(key) for key in required_keys):
                 st.warning("Twitter API credentials incomplete. Twitter sentiment analysis will be disabled.")
                 return
-
-            auth = tweepy.OAuthHandler(
-                os.environ['TWITTER_API_KEY'],
-                os.environ['TWITTER_API_SECRET']
+            
+            # Create Twitter client with bearer token authentication
+            self.twitter_client = tweepy.Client(
+                consumer_key=os.environ['TWITTER_API_KEY'],
+                consumer_secret=os.environ['TWITTER_API_SECRET'],
+                access_token=os.environ['TWITTER_ACCESS_TOKEN'],
+                access_token_secret=os.environ['TWITTER_ACCESS_TOKEN_SECRET'],
+                wait_on_rate_limit=True
             )
             
-            if all(os.environ.get(key) for key in ['TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_TOKEN_SECRET']):
-                auth.set_access_token(
-                    os.environ['TWITTER_ACCESS_TOKEN'],
-                    os.environ['TWITTER_ACCESS_TOKEN_SECRET']
-                )
-            
-            self.twitter_client = tweepy.Client(auth=auth)
         except Exception as e:
             st.warning(f"Twitter API initialization failed: {str(e)}")
             self.twitter_client = None
 
     def get_crypto_news_sentiment(self, keyword: str) -> Optional[Dict]:
         """Get aggregated sentiment from multiple sources."""
+        if not isinstance(keyword, str):
+            return None
         return self._get_cached_sentiment(keyword)
 
     @staticmethod
@@ -110,7 +113,7 @@ class SentimentAnalyzer:
 
         # Process each source independently with proper error handling
         try:
-            rss_data = self._get_cached_rss_sentiment(keyword)
+            rss_data = self._analyze_rss_feeds(keyword)
             if rss_data:
                 sources_data.append(rss_data)
                 all_scores.extend(rss_data['scores'])
@@ -119,7 +122,7 @@ class SentimentAnalyzer:
             failed_sources.append(("RSS Feeds", str(e)))
 
         try:
-            cc_data = self._get_cached_cryptocompare_sentiment(keyword)
+            cc_data = self._analyze_cryptocompare_news(keyword)
             if cc_data:
                 sources_data.append(cc_data)
                 all_scores.extend(cc_data['scores'])
@@ -129,7 +132,7 @@ class SentimentAnalyzer:
 
         if self.twitter_client:
             try:
-                twitter_data = self._get_cached_twitter_sentiment(keyword)
+                twitter_data = self._analyze_twitter_sentiment(keyword)
                 if twitter_data:
                     sources_data.append(twitter_data)
                     all_scores.extend(twitter_data['scores'])
@@ -172,12 +175,6 @@ class SentimentAnalyzer:
 
         return result
 
-    @staticmethod
-    @st.cache_data(ttl=60)  # Cache Twitter results for 1 minute
-    def _get_cached_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
-        """Cached wrapper for Twitter sentiment analysis."""
-        return self._analyze_twitter_sentiment(keyword)
-
     @rate_limit(calls=180, period=900)  # Twitter rate limit: 180 calls per 15 minutes
     def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from Twitter with enhanced error handling."""
@@ -186,13 +183,17 @@ class SentimentAnalyzer:
 
         try:
             query = f"{keyword} crypto -is:retweet lang:en"
-            tweets = []
             
-            response = self.twitter_client.search_recent_tweets(
-                query=query,
-                max_results=10,
-                tweet_fields=['text']
-            )
+            # Search recent tweets with proper error handling
+            try:
+                response = self.twitter_client.search_recent_tweets(
+                    query=query,
+                    max_results=10,
+                    tweet_fields=['text']
+                )
+            except tweepy.TweepyException as e:
+                st.warning(f"Twitter API error: {str(e)}")
+                return None
             
             if not response or not hasattr(response, 'data') or not response.data:
                 return None
@@ -217,12 +218,6 @@ class SentimentAnalyzer:
         except Exception as e:
             raise Exception(f"Twitter API error: {str(e)}")
 
-    @staticmethod
-    @st.cache_data(ttl=300)  # Cache RSS results for 5 minutes
-    def _get_cached_rss_sentiment(self, keyword: str) -> Optional[Dict]:
-        """Cached wrapper for RSS sentiment analysis."""
-        return self._analyze_rss_feeds(keyword)
-
     @rate_limit(calls=60, period=60)  # 60 calls per minute
     def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from RSS feeds with improved error handling."""
@@ -238,7 +233,7 @@ class SentimentAnalyzer:
                     continue
                 
                 feed_scores = []
-                for entry in feed.entries[:10]:
+                for entry in feed.entries[:10]:  # Process up to 10 entries per feed
                     if (hasattr(entry, 'title') and hasattr(entry, 'description') and
                         keyword.lower() in f"{entry.title} {entry.description}".lower()):
                         text = f"{entry.title}. {entry.description}"
@@ -265,16 +260,11 @@ class SentimentAnalyzer:
             'confidence': confidence
         }
 
-    @staticmethod
-    @st.cache_data(ttl=60)  # Cache CryptoCompare results for 1 minute
-    def _get_cached_cryptocompare_sentiment(self, keyword: str) -> Optional[Dict]:
-        """Cached wrapper for CryptoCompare sentiment analysis."""
-        return self._analyze_cryptocompare_news(keyword)
-
     @rate_limit(calls=30, period=60)  # 30 calls per minute
     def _analyze_cryptocompare_news(self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from CryptoCompare price data with improved error handling."""
+        """Analyze sentiment from market data with improved error handling."""
         try:
+            # Use market data instead of news
             data = cryptocompare.get_price(
                 keyword,
                 'USD',
@@ -301,7 +291,7 @@ class SentimentAnalyzer:
                 return None
 
             return {
-                'name': 'CryptoCompare',
+                'name': 'Market Data',
                 'scores': scores,
                 'score': sum(scores) / len(scores),
                 'samples': len(scores),
@@ -309,7 +299,7 @@ class SentimentAnalyzer:
             }
 
         except Exception as e:
-            raise Exception(f"CryptoCompare API error: {str(e)}")
+            raise Exception(f"Market data error: {str(e)}")
 
     def _categorize_sentiment(self, score: float) -> str:
         """Categorize sentiment score into categories."""

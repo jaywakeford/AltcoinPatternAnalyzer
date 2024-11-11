@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "ccxt>=4.4.29",
     "cryptocompare>=0.7.6",
     "feedparser>=6.0.10",
     "nltk>=3.8.1",
