@@ -7,17 +7,33 @@ from datetime import datetime, timedelta
 import time
 import random
 
+# Cryptocurrency symbol mapping
+CRYPTO_SYMBOLS = {
+    'bitcoin': 'BTC/USDT',
+    'ethereum': 'ETH/USDT',
+    'cardano': 'ADA/USDT',
+    'binancecoin': 'BNB/USDT',
+    'solana': 'SOL/USDT'
+}
+
 # Initialize APIs
 cg = CoinGeckoAPI()
 
-# Initialize CCXT exchanges with proper error handling
+def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
+    """Convert base symbol to exchange-specific format."""
+    if exchange_id == 'kucoin':
+        return base_symbol.replace('/', '-')
+    return base_symbol
+
 def init_exchanges() -> List[ccxt.Exchange]:
+    """Initialize multiple cryptocurrency exchanges with error handling."""
     exchanges = []
-    exchange_ids = ['kraken', 'coinbasepro', 'kucoin']  # Added KuCoin as another fallback
+    exchange_ids = ['kraken', 'coinbasepro', 'kucoin']
     
     for exchange_id in exchange_ids:
         try:
             exchange = getattr(ccxt, exchange_id)()
+            exchange.load_markets()  # Load market symbols
             exchanges.append(exchange)
         except Exception as e:
             st.warning(f"Failed to initialize {exchange_id}: {str(e)}")
@@ -43,6 +59,12 @@ def retry_api_call(func, max_retries=3, delay=1):
 def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
     """Fetch cryptocurrency data using multiple exchanges with fallback."""
     try:
+        # Get symbol from mapping
+        symbol = CRYPTO_SYMBOLS.get(coin_id.lower())
+        if not symbol:
+            st.error(f"Unsupported cryptocurrency: {coin_id}")
+            return pd.DataFrame()
+
         # Convert days to milliseconds for CCXT
         timeframe = '1d'
         if int(days) <= 7:
@@ -50,12 +72,12 @@ def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
         
         for exchange in exchanges:
             try:
-                # Get symbol in CCXT format
-                symbol = f"{coin_id.upper()}/USDT"
+                # Get exchange-specific symbol format
+                exchange_symbol = get_exchange_symbol(exchange.id, symbol)
                 
                 def fetch_data():
                     return exchange.fetch_ohlcv(
-                        symbol,
+                        exchange_symbol,
                         timeframe,
                         limit=int(days) * (24 if timeframe == '1h' else 1)
                     )
@@ -124,44 +146,25 @@ def get_bitcoin_dominance(days: str) -> pd.DataFrame:
         
         # Get global market data using correct endpoint
         global_data = retry_api_call(
-            lambda: cg.get_global_market_chart(
-                vs_currency='usd',
-                days=days
-            )
+            lambda: cg.get_global()
         )
         
         if not btc_data or not global_data:
             raise Exception("Failed to fetch market data")
         
-        # Validate and process data
-        btc_market_caps = []
-        global_market_caps = []
+        # Calculate dominance using current market caps
+        btc_market_cap = btc_data['market_caps'][-1][1]
+        total_market_cap = global_data['total_market_cap']['usd']
         
-        for btc_point, global_point in zip(btc_data['market_caps'], global_data['total_market_cap']):
-            if all(isinstance(x, (int, float)) for x in [btc_point[1], global_point[1]]):
-                timestamp = pd.to_datetime(btc_point[0], unit='ms')
-                btc_market_caps.append((timestamp, btc_point[1]))
-                global_market_caps.append((timestamp, global_point[1]))
+        # Create time series for the dominance
+        timestamps = [pd.to_datetime(ts, unit='ms') for ts, _ in btc_data['market_caps']]
+        dominance = (btc_market_cap / total_market_cap * 100) if total_market_cap > 0 else 0
         
-        if not btc_market_caps or not global_market_caps:
-            raise Exception("Invalid market cap data received")
-        
-        # Create DataFrame
+        # Create DataFrame with the calculated dominance
         df = pd.DataFrame({
-            'timestamp': [ts for ts, _ in btc_market_caps],
-            'btc_market_cap': [mc for _, mc in btc_market_caps],
-            'total_market_cap': [mc for _, mc in global_market_caps]
+            'timestamp': timestamps,
+            'btc_dominance': [dominance] * len(timestamps)
         })
-        
-        # Calculate dominance percentage with validation
-        df['btc_dominance'] = df.apply(
-            lambda row: (row['btc_market_cap'] / row['total_market_cap'] * 100)
-            if row['total_market_cap'] > 0 else 0,
-            axis=1
-        )
-        
-        # Clean and validate the data
-        df['btc_dominance'] = df['btc_dominance'].fillna(0).clip(0, 100)
         
         df.set_index('timestamp', inplace=True)
         return df[['btc_dominance']]
