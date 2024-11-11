@@ -4,12 +4,35 @@ import cryptocompare
 import nltk
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import tweepy
 from typing import Dict, List, Optional
 import requests
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from functools import partial
+import time
+from functools import wraps
+
+def rate_limit(calls: int, period: int):
+    """Rate limiter decorator"""
+    intervals = []
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            now = time.time()
+            intervals.append(now)
+            
+            # Remove old timestamps
+            while intervals and intervals[0] < now - period:
+                intervals.pop(0)
+            
+            if len(intervals) > calls:
+                sleep_time = intervals[0] + period - now
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                    intervals.clear()
+            
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class SentimentAnalyzer:
     def __init__(self):
@@ -29,8 +52,8 @@ class SentimentAnalyzer:
         # RSS feeds for major crypto news sites
         self.rss_feeds = [
             "https://cointelegraph.com/rss",
-            "https://coindesk.com/arc/outboundfeeds/rss/",
-            "https://news.bitcoin.com/feed/",
+            "https://www.newsbtc.com/feed/",
+            "https://bitcoinmagazine.com/.rss/full/",
             "https://cryptopotato.com/feed/",
             "https://cryptonews.com/news/feed/"
         ]
@@ -39,110 +62,123 @@ class SentimentAnalyzer:
         self.twitter_client = None
         self._init_twitter_client()
 
+        # Initialize rate limiters
+        self.last_api_call = {}
+        self.api_call_counts = {}
+    
     def _init_twitter_client(self) -> None:
         """Initialize Twitter API client with proper error handling."""
         try:
+            if not all(os.environ.get(key) for key in ['TWITTER_API_KEY', 'TWITTER_API_SECRET']):
+                st.warning("Twitter API credentials incomplete. Twitter sentiment analysis will be disabled.")
+                return
+
             auth = tweepy.OAuthHandler(
-                os.environ.get('TWITTER_API_KEY'),
-                os.environ.get('TWITTER_API_SECRET')
-            )
-            auth.set_access_token(
-                os.environ.get('TWITTER_ACCESS_TOKEN'),
-                os.environ.get('TWITTER_ACCESS_TOKEN_SECRET')
+                os.environ['TWITTER_API_KEY'],
+                os.environ['TWITTER_API_SECRET']
             )
             
-            self.twitter_client = tweepy.Client(
-                consumer_key=os.environ.get('TWITTER_API_KEY'),
-                consumer_secret=os.environ.get('TWITTER_API_SECRET'),
-                access_token=os.environ.get('TWITTER_ACCESS_TOKEN'),
-                access_token_secret=os.environ.get('TWITTER_ACCESS_TOKEN_SECRET'),
-                wait_on_rate_limit=True
-            )
-            st.success("Twitter API connection established successfully!")
-        except KeyError:
-            st.warning("Twitter API credentials not found. Twitter sentiment analysis will be disabled.")
+            if all(os.environ.get(key) for key in ['TWITTER_ACCESS_TOKEN', 'TWITTER_ACCESS_TOKEN_SECRET']):
+                auth.set_access_token(
+                    os.environ['TWITTER_ACCESS_TOKEN'],
+                    os.environ['TWITTER_ACCESS_TOKEN_SECRET']
+                )
+            
+            self.twitter_client = tweepy.Client(auth=auth)
         except Exception as e:
             st.warning(f"Twitter API initialization failed: {str(e)}")
+            self.twitter_client = None
 
-    @st.cache_data(ttl=300)
-    def get_crypto_news_sentiment(self, keyword: str) -> Dict:
-        """Get aggregated sentiment from multiple sources with improved error handling."""
+    def get_crypto_news_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Get aggregated sentiment from multiple sources."""
+        return self._get_cached_sentiment(keyword)
+
+    @staticmethod
+    @st.cache_data(ttl=300)  # Cache for 5 minutes
+    def _get_cached_sentiment(keyword: str) -> Dict:
+        """Cached method to get sentiment data."""
+        analyzer = SentimentAnalyzer()
+        return analyzer._analyze_all_sources(keyword)
+
+    @rate_limit(calls=50, period=60)  # 50 calls per minute
+    def _analyze_all_sources(self, keyword: str) -> Dict:
+        """Analyze sentiment from all available sources with improved error handling."""
         sources_data = []
         all_scores = []
         all_samples = 0
+        failed_sources = []
 
-        with ThreadPoolExecutor() as executor:
-            # Start all analysis tasks
-            rss_future = executor.submit(self._analyze_rss_feeds, keyword)
-            cc_future = executor.submit(self._analyze_cryptocompare_news, keyword)
-            twitter_future = executor.submit(self._analyze_twitter_sentiment, keyword) if self.twitter_client else None
+        # Process each source independently with proper error handling
+        try:
+            rss_data = self._get_cached_rss_sentiment(keyword)
+            if rss_data:
+                sources_data.append(rss_data)
+                all_scores.extend(rss_data['scores'])
+                all_samples += rss_data['samples']
+        except Exception as e:
+            failed_sources.append(("RSS Feeds", str(e)))
 
-            # RSS Feeds Analysis
+        try:
+            cc_data = self._get_cached_cryptocompare_sentiment(keyword)
+            if cc_data:
+                sources_data.append(cc_data)
+                all_scores.extend(cc_data['scores'])
+                all_samples += cc_data['samples']
+        except Exception as e:
+            failed_sources.append(("CryptoCompare", str(e)))
+
+        if self.twitter_client:
             try:
-                rss_sentiment = rss_future.result(timeout=10)  # 10 second timeout
-                if rss_sentiment:
-                    all_scores.extend(rss_sentiment['scores'])
-                    all_samples += rss_sentiment['samples']
-                    sources_data.append({
-                        'name': 'RSS Feeds',
-                        'score': rss_sentiment['average_score'],
-                        'samples': rss_sentiment['samples']
-                    })
-            except TimeoutError:
-                st.warning("RSS feed analysis timed out")
-
-            # CryptoCompare Analysis
-            try:
-                cc_sentiment = cc_future.result(timeout=5)  # 5 second timeout
-                if cc_sentiment:
-                    all_scores.extend(cc_sentiment['scores'])
-                    all_samples += cc_sentiment['samples']
-                    sources_data.append({
-                        'name': 'CryptoCompare',
-                        'score': cc_sentiment['average_score'],
-                        'samples': cc_sentiment['samples']
-                    })
-            except TimeoutError:
-                st.warning("CryptoCompare analysis timed out")
-
-            # Twitter Analysis
-            if twitter_future:
-                try:
-                    twitter_sentiment = twitter_future.result(timeout=10)  # 10 second timeout
-                    if twitter_sentiment:
-                        all_scores.extend(twitter_sentiment['scores'])
-                        all_samples += twitter_sentiment['samples']
-                        sources_data.append({
-                            'name': 'Twitter',
-                            'score': twitter_sentiment['average_score'],
-                            'samples': twitter_sentiment['samples']
-                        })
-                except TimeoutError:
-                    st.warning("Twitter analysis timed out")
+                twitter_data = self._get_cached_twitter_sentiment(keyword)
+                if twitter_data:
+                    sources_data.append(twitter_data)
+                    all_scores.extend(twitter_data['scores'])
+                    all_samples += twitter_data['samples']
+            except Exception as e:
+                failed_sources.append(("Twitter", str(e)))
 
         # Return neutral sentiment if no data available
         if not all_scores:
+            error_message = None
+            if failed_sources:
+                error_message = "; ".join([f"{source}: {error}" for source, error in failed_sources])
+            
             return {
                 'score': 0,
                 'samples': 0,
                 'timestamp': datetime.now().isoformat(),
                 'sentiment_category': 'neutral',
-                'error': "No sentiment data available from any source",
+                'error': error_message,
+                'confidence': 0,
                 'sources': []
             }
 
-        # Calculate average sentiment
-        avg_sentiment = sum(all_scores) / len(all_scores)
-        
-        return {
-            'score': avg_sentiment * 100,  # Scale to -100 to 100
+        # Calculate weighted average sentiment based on confidence
+        total_weight = sum(source.get('confidence', 0) for source in sources_data)
+        weighted_sentiment = sum(
+            source.get('score', 0) * source.get('confidence', 0)
+            for source in sources_data
+        ) / total_weight if total_weight > 0 else 0
+
+        result = {
+            'score': weighted_sentiment * 100,  # Scale to -100 to 100
             'samples': all_samples,
             'timestamp': datetime.now().isoformat(),
-            'sentiment_category': self._categorize_sentiment(avg_sentiment * 100),
-            'error': None,
+            'sentiment_category': self._categorize_sentiment(weighted_sentiment * 100),
+            'confidence': min(1.0, total_weight / len(sources_data)) if sources_data else 0,
+            'error': None if not failed_sources else f"Some sources failed: {'; '.join(f'{s[0]}' for s in failed_sources)}",
             'sources': sources_data
         }
 
+        return result
+
+    @staticmethod
+    @st.cache_data(ttl=60)  # Cache Twitter results for 1 minute
+    def _get_cached_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Cached wrapper for Twitter sentiment analysis."""
+        return self._analyze_twitter_sentiment(keyword)
+
+    @rate_limit(calls=180, period=900)  # Twitter rate limit: 180 calls per 15 minutes
     def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from Twitter with enhanced error handling."""
         if not self.twitter_client:
@@ -152,110 +188,128 @@ class SentimentAnalyzer:
             query = f"{keyword} crypto -is:retweet lang:en"
             tweets = []
             
-            try:
-                for tweet in tweepy.Paginator(
-                    self.twitter_client.search_recent_tweets,
-                    query=query,
-                    max_results=100,
-                    tweet_fields=['text']
-                ).flatten(limit=100):
-                    tweets.append(tweet)
-            except tweepy.TooManyRequests:
-                st.warning("Twitter API rate limit reached. Using cached or alternative data sources.")
-                return None
-            except tweepy.Unauthorized:
-                st.error("Twitter API authentication failed. Please check your credentials.")
-                return None
+            response = self.twitter_client.search_recent_tweets(
+                query=query,
+                max_results=10,
+                tweet_fields=['text']
+            )
             
-            if not tweets:
+            if not response or not hasattr(response, 'data') or not response.data:
                 return None
             
             scores = []
-            for tweet in tweets:
+            for tweet in response.data:
                 sentiment = self.vader.polarity_scores(tweet.text)
                 scores.append(sentiment['compound'])
 
             if not scores:
                 return None
 
+            confidence = min(1.0, len(scores) / 20)  # Confidence based on sample size
             return {
+                'name': 'Twitter',
                 'scores': scores,
-                'average_score': sum(scores) / len(scores),
-                'samples': len(scores)
+                'score': sum(scores) / len(scores),
+                'samples': len(scores),
+                'confidence': confidence
             }
 
         except Exception as e:
-            st.warning(f"Error analyzing Twitter sentiment: {str(e)}")
-            return None
+            raise Exception(f"Twitter API error: {str(e)}")
 
+    @staticmethod
+    @st.cache_data(ttl=300)  # Cache RSS results for 5 minutes
+    def _get_cached_rss_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Cached wrapper for RSS sentiment analysis."""
+        return self._analyze_rss_feeds(keyword)
+
+    @rate_limit(calls=60, period=60)  # 60 calls per minute
     def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from RSS feeds with enhanced error handling and timeouts."""
+        """Analyze sentiment from RSS feeds with improved error handling."""
         scores = []
         successful_feeds = 0
-        
-        def process_feed(feed_url):
+        failed_feeds = []
+
+        for feed_url in self.rss_feeds:
             try:
-                feed = feedparser.parse(feed_url, timeout=5)  # 5 second timeout per feed
+                feed = feedparser.parse(feed_url)
                 if feed.bozo:
-                    return None
+                    failed_feeds.append((feed_url, "Invalid feed format"))
+                    continue
                 
                 feed_scores = []
                 for entry in feed.entries[:10]:
-                    if hasattr(entry, 'title') and hasattr(entry, 'description'):
+                    if (hasattr(entry, 'title') and hasattr(entry, 'description') and
+                        keyword.lower() in f"{entry.title} {entry.description}".lower()):
                         text = f"{entry.title}. {entry.description}"
-                        if keyword.lower() in text.lower():
-                            sentiment = self.vader.polarity_scores(text)
-                            feed_scores.append(sentiment['compound'])
-                return feed_scores
-            except Exception:
-                return None
-
-        with ThreadPoolExecutor() as executor:
-            feed_results = list(executor.map(process_feed, self.rss_feeds))
-
-        for result in feed_results:
-            if result:
-                successful_feeds += 1
-                scores.extend(result)
+                        sentiment = self.vader.polarity_scores(text)
+                        feed_scores.append(sentiment['compound'])
+                
+                if feed_scores:
+                    scores.extend(feed_scores)
+                    successful_feeds += 1
+            except Exception as e:
+                failed_feeds.append((feed_url, str(e)))
 
         if not scores:
-            if successful_feeds == 0:
-                st.warning("All RSS feeds failed. Please check your internet connection.")
+            if failed_feeds:
+                raise Exception(f"RSS feed errors: {'; '.join(f'{url}: {error}' for url, error in failed_feeds)}")
             return None
 
+        confidence = min(1.0, successful_feeds / len(self.rss_feeds))
         return {
+            'name': 'RSS Feeds',
             'scores': scores,
-            'average_score': sum(scores) / len(scores),
-            'samples': len(scores)
+            'score': sum(scores) / len(scores),
+            'samples': len(scores),
+            'confidence': confidence
         }
 
+    @staticmethod
+    @st.cache_data(ttl=60)  # Cache CryptoCompare results for 1 minute
+    def _get_cached_cryptocompare_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Cached wrapper for CryptoCompare sentiment analysis."""
+        return self._analyze_cryptocompare_news(keyword)
+
+    @rate_limit(calls=30, period=60)  # 30 calls per minute
     def _analyze_cryptocompare_news(self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from CryptoCompare news with improved error handling."""
+        """Analyze sentiment from CryptoCompare price data with improved error handling."""
         try:
-            news_list = cryptocompare.get_news()
-            if not news_list:
-                return None
+            data = cryptocompare.get_price(
+                keyword,
+                'USD',
+                full=True
+            )
+            
+            if not data or 'RAW' not in data or keyword.upper() not in data['RAW']:
+                raise Exception("No price data available")
 
-            scores = []
-            for article in news_list[:20]:
-                if 'title' in article and 'body' in article:
-                    text = f"{article['title']}. {article['body']}"
-                    if keyword.lower() in text.lower():
-                        sentiment = self.vader.polarity_scores(text)
-                        scores.append(sentiment['compound'])
-
+            raw_data = data['RAW'][keyword.upper()]['USD']
+            
+            try:
+                changes = [
+                    float(raw_data.get('CHANGEPCT24HOUR', 0)),
+                    float(raw_data.get('CHANGEPCTHOUR', 0))
+                ]
+            except (TypeError, ValueError) as e:
+                raise Exception(f"Invalid price change data: {str(e)}")
+            
+            # Normalize changes to [-1, 1] range for sentiment
+            scores = [min(max(change / 10, -1), 1) for change in changes]
+            
             if not scores:
                 return None
 
             return {
+                'name': 'CryptoCompare',
                 'scores': scores,
-                'average_score': sum(scores) / len(scores),
-                'samples': len(scores)
+                'score': sum(scores) / len(scores),
+                'samples': len(scores),
+                'confidence': 0.8  # High confidence in price data
             }
 
         except Exception as e:
-            st.warning(f"Error fetching CryptoCompare news: {str(e)}")
-            return None
+            raise Exception(f"CryptoCompare API error: {str(e)}")
 
     def _categorize_sentiment(self, score: float) -> str:
         """Categorize sentiment score into categories."""
