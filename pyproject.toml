@@ -17,6 +17,7 @@ dependencies = [
     "pycoingecko>=2.1.3",
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
+    "spacy>=3.7.5",
     "streamlit==1.40.0",
     "ta",
     "textblob>=0.18.0.post0",
