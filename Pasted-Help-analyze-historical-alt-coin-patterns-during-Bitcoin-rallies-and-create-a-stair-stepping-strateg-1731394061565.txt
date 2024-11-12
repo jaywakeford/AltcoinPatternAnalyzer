@@ -1,0 +1,68 @@
+Help analyze historical alt coin patterns during Bitcoin rallies and create a stair-stepping strategy, incorporating the following specific elements:
+	1	Initial Market Analysis:
+	•	Get current data for top 50 cryptocurrencies by market cap
+	•	Focus on key metrics: market cap, volume, price action, ATH distance
+	•	Extract BTC dominance trends
+	2	Create a three-phase strategy breakdown:
+	•	Phase 1: Large Cap Leaders (BTC consolidation phase)
+	•	Phase 2: Mid Cap Layer-1s (After initial alt momentum)
+	•	Phase 3: Sector-specific opportunities (DeFi, Gaming, Infrastructure)
+	3	For each phase, identify:
+	•	Top 3 coins per category
+	•	Specific entry and exit points
+	•	Position sizing recommendations
+	•	Stop-loss and take-profit levels
+	•	Volume triggers for entries/exits
+	4	Map detailed entry/exit scenarios assuming:
+	•	BTC target of $120,000
+	•	BTC dominance floor of 53%
+	•	Current market conditions
+	•	Institutional flow considerations
+	5	Provide cycle comparison analysis including:
+	•	2017-2018 cycle
+	•	2021 cycle
+	•	Current 2024 cycle Focus on:
+	•	Institutional adoption changes
+	•	Regulatory developments
+	•	Geopolitical factors
+	•	Market structure evolution
+	•	Technological advancement state
+	•	Social sentiment shifts
+	6	Risk Management Framework:
+	•	Position sizing rules
+	•	Correlation-based exits
+	•	Volume-based triggers
+	•	Time-based risk reduction
+	•	Market depth considerations
+	7	Include specific metrics for strategy validation:
+	•	Volume thresholds
+	•	Market depth requirements
+	•	Volatility parameters
+	•	Correlation limits
+	•	Time-based exit rules
+	8	Address market structure changes:
+	•	ETF impact analysis
+	•	Institutional flow effects
+	•	Regulatory environment
+	•	Market depth evolution
+	•	Professional trader influence
+Compare all findings to previous crypto cycles and adjust for:
+	•	Increased institutional presence
+	•	Regulatory clarity
+	•	Market efficiency improvements
+	•	Professional trading environment
+	•	Technological advancements
+Provide recommendations for strategy modifications based on:
+	•	Current market conditions
+	•	Institutional involvement
+	•	Regulatory environment
+	•	Market structure changes
+	•	Technical infrastructure
+Format the analysis with specific sections for:
+	•	Strategy overview
+	•	Coin selection criteria
+	•	Entry/exit frameworks
+	•	Risk management rules
+	•	Cycle comparisons
+	•	Supporting data
+Include quantitative metrics where possible and provide specific trigger points for strategy execution and risk management."

@@ -28,82 +28,108 @@ class StrategyBuilder:
             'piercing pattern', 'three white soldiers', 'three black crows'
         ]
         
-        # Initialize strategy templates (keeping existing ones)
+        # Initialize template with new clearer format
+        self.strategy_template = '''
+[Strategy Name]: <Your Strategy Name>
+
+Entry Conditions:
+- Primary Signal: <describe main entry signal>
+- Additional Confirmations: <describe confirmation signals>
+
+Exit Conditions:
+- Primary Exit: <describe main exit signal>
+- Safety Exits: <describe additional exit conditions>
+
+Position Management:
+- Position Size: <specify percentage>
+- Maximum Positions: <specify number>
+
+Risk Management:
+- Stop Loss: <specify percentage>
+- Take Profit: <specify percentage>
+- Trailing Stop: <optional, specify conditions>
+
+Trading Schedule:
+- Timeframe: <specify timeframe>
+- Trading Hours: <optional, specify hours>
+'''
+        
+        # Example strategies using new format
         self.strategy_templates = {
             'Moving Average Crossover': '''
 [Strategy Name]: Moving Average Crossover Strategy
 
-**Entry Conditions:**
+Entry Conditions:
 - Primary Signal: Buy when 50-day SMA crosses above 200-day SMA
-- Confirmation Signals: RSI below 70, Volume above 20-day average
+- Additional Confirmations:
+  * RSI below 70
+  * Volume above 20-day average
+  * Price above 20-day EMA
 
-**Exit Conditions:**
+Exit Conditions:
 - Primary Exit: Sell when 50-day SMA crosses below 200-day SMA
-- Safety Exits: RSI above 70, Price below 200-day SMA
+- Safety Exits:
+  * RSI above 70
+  * Price breaks below 200-day SMA
+  * Volume drops below average
 
-**Position Management:**
+Position Management:
 - Position Size: 30% of capital per trade
 - Maximum Positions: 1 position at a time
 
-**Risk Management:**
+Risk Management:
 - Stop Loss: 5% below entry price
 - Take Profit: 15% above entry price
 - Trailing Stop: 2% trailing stop after 5% profit
 
-**Trading Schedule:**
+Trading Schedule:
 - Timeframe: Daily timeframe
 - Trading Hours: All hours
-
-**Market Conditions:**
-- Market Phase: Only trade during uptrend
-- Volume Requirements: Volume above 20-day average
-- Volatility Filter: ATR below 5%
-            ''',
+''',
             'RSI Reversal': '''
 [Strategy Name]: RSI Reversal Strategy
 
-**Entry Conditions:**
+Entry Conditions:
 - Primary Signal: Buy when RSI falls below 30
-- Confirmation Signals: 
+- Additional Confirmations:
   * Price above 20-day SMA
   * Volume spike above 200% average
   * Bullish candlestick pattern (hammer or engulfing)
 
-**Exit Conditions:**
+Exit Conditions:
 - Primary Exit: Sell when RSI rises above 70
-- Safety Exits: Price breaks below 20-day SMA
-- Additional Exits:
-  * Bearish candlestick pattern
+- Safety Exits:
+  * Price breaks below 20-day SMA
+  * Bearish candlestick pattern appears
   * Volume decline below average
 
-**Position Management:**
+Position Management:
 - Position Size: 20% of capital per trade
 - Maximum Positions: 2 positions at a time
 
-**Risk Management:**
+Risk Management:
 - Stop Loss: 3.5% below entry price
 - Take Profit: Multiple targets:
   * Target 1: 5% (40% of position)
   * Target 2: 10% (60% of position)
 - Trailing Stop: 1.5% trailing stop after 4% profit
 
-**Trading Schedule:**
+Trading Schedule:
 - Timeframe: 4-hour timeframe
 - Trading Hours: 09:30-16:00 EST
-- Weekend Trading: No
-
-**Market Conditions:**
-- Market Phase: Trade in ranging markets
-- Volume Requirements: Above 10-day average
-- Volatility Conditions:
-  * ATR between 1-4%
-  * Bollinger Bands not extremely wide
-            '''
+'''
         }
 
     def render(self) -> Optional[Dict]:
         """Main render method for strategy builder interface."""
         st.markdown("### Strategy Builder")
+        
+        st.info("""
+        Create your trading strategy using one of these methods:
+        1. Natural Language: Describe your strategy in plain English
+        2. Template: Use pre-built strategy templates
+        3. Manual Builder: Build your strategy step by step
+        """)
         
         # Strategy input method selection
         input_method = st.radio(
@@ -119,33 +145,62 @@ class StrategyBuilder:
             return self._render_manual_builder()
 
     def _render_natural_language_input(self) -> Optional[Dict]:
-        """Render natural language input interface."""
-        st.markdown('''
+        """Render natural language input interface with improved guidelines."""
+        st.markdown("""
+        ### Strategy Description Guidelines
         Describe your trading strategy in plain English. Include:
-        - Entry conditions (when to buy/sell)
-        - Exit conditions
-        - Position size (optional, default 10%)
-        - Stop loss and take profit levels (optional)
-        - Timeframe (optional, default 1-day)
-        ''')
+
+        **Required Information:**
+        - Entry Conditions (e.g., "Buy when 50-day SMA crosses above 200-day SMA")
+        - Exit Conditions (e.g., "Sell when RSI goes above 70")
+        - Position Size (e.g., "Use 30% position size")
+        - Risk Management (e.g., "Set stop loss at 5% and take profit at 15%")
+
+        **Optional Information:**
+        - Timeframe (e.g., "Use 4-hour timeframe")
+        - Additional Indicators (e.g., "Monitor volume for confirmation")
+        - Market Phase Filters (e.g., "Only trade during uptrend")
+        """)
+        
+        # Show template example
+        with st.expander("View Format Template"):
+            st.code(self.strategy_template, language="markdown")
         
         description = st.text_area(
             "Strategy Description",
-            height=150,
-            help="Describe your trading strategy in natural language"
+            height=400,
+            help="Describe your trading strategy following the guidelines above"
         )
         
         if description:
             try:
+                # Validate required fields
                 missing_fields = self._validate_required_fields(description)
                 if missing_fields:
-                    st.error(f"Missing required fields: {', '.join(missing_fields)}")
+                    st.error(f"""
+                    Missing required fields:
+                    {', '.join(missing_fields)}
+                    
+                    Please include all required fields in your strategy description.
+                    Check the template above for the correct format.
+                    """)
                     return None
                     
+                # Parse strategy if validation passes
                 strategy = self._parse_strategy_description(description)
+                
+                # Display parsed strategy for verification
+                self._display_parsed_strategy(strategy)
+                
                 return strategy
+                
             except Exception as e:
-                st.error(f"Error parsing strategy: {str(e)}")
+                st.error(f"""
+                Error parsing strategy: {str(e)}
+                
+                Please check your strategy description format and try again.
+                Make sure to follow the template structure and include all required fields.
+                """)
                 return None
         return None
 
@@ -159,26 +214,84 @@ class StrategyBuilder:
         
         if template_name:
             template = self.strategy_templates[template_name]
-            st.text_area("Template Strategy", value=template, height=300, disabled=True)
+            st.text_area("Template Strategy", value=template, height=400, disabled=True)
             if st.button("Use this template"):
-                return self._parse_strategy_description(template)
+                try:
+                    return self._parse_strategy_description(template)
+                except Exception as e:
+                    st.error(f"Error using template: {str(e)}")
+                    return None
         return None
 
     def _render_manual_builder(self) -> Optional[Dict]:
         """Render manual strategy builder interface."""
         st.markdown("### Manual Strategy Builder")
-        # Add fields for manual strategy building
+        
         entry_conditions = []
         exit_conditions = []
         
-        position_size = st.number_input("Position Size (%)", 1, 100, 10)
-        stop_loss = st.number_input("Stop Loss (%)", 0, 100, 5)
-        take_profit = st.number_input("Take Profit (%)", 0, 100, 15)
-        timeframe = st.selectbox("Timeframe", ["1d", "4h", "1h", "15m"])
-        max_trades = st.number_input("Maximum Concurrent Trades", 1, 10, 1)
+        # Entry Conditions
+        st.subheader("Entry Conditions")
+        entry_type = st.selectbox(
+            "Entry Signal Type",
+            ["Moving Average", "RSI", "Price Action", "Volume"],
+            key="entry_type"
+        )
         
-        if st.button("Create Strategy"):
-            return {
+        # Exit Conditions
+        st.subheader("Exit Conditions")
+        exit_type = st.selectbox(
+            "Exit Signal Type",
+            ["Moving Average", "RSI", "Price Action", "Stop Loss/Take Profit"],
+            key="exit_type"
+        )
+        
+        # Position and Risk Management
+        st.subheader("Position & Risk Management")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            position_size = st.number_input(
+                "Position Size (%)",
+                min_value=1,
+                max_value=100,
+                value=10,
+                help="Percentage of capital to risk per trade"
+            )
+            stop_loss = st.number_input(
+                "Stop Loss (%)",
+                min_value=0.1,
+                max_value=50.0,
+                value=5.0,
+                help="Stop loss percentage below entry"
+            )
+        
+        with col2:
+            take_profit = st.number_input(
+                "Take Profit (%)",
+                min_value=0.1,
+                max_value=100.0,
+                value=15.0,
+                help="Take profit percentage above entry"
+            )
+            max_trades = st.number_input(
+                "Maximum Concurrent Trades",
+                min_value=1,
+                max_value=10,
+                value=1,
+                help="Maximum number of open positions"
+            )
+        
+        # Timeframe
+        timeframe = st.selectbox(
+            "Timeframe",
+            ["1m", "5m", "15m", "1h", "4h", "1d", "1w"],
+            index=5,
+            help="Trading timeframe"
+        )
+        
+        if st.button("Create Strategy", help="Generate strategy with current settings"):
+            strategy = {
                 'entry_conditions': entry_conditions,
                 'exit_conditions': exit_conditions,
                 'position_size': position_size,
@@ -187,90 +300,139 @@ class StrategyBuilder:
                 'timeframe': timeframe,
                 'max_trades': max_trades
             }
+            
+            # Display strategy summary
+            self._display_parsed_strategy(strategy)
+            return strategy
+            
         return None
 
     def _validate_required_fields(self, description: str) -> List[str]:
         """Validate required fields with more flexible format recognition."""
         missing_fields = []
         
-        # Strategy name check (more flexible)
-        if not (re.search(r'\[Strategy Name\]:', description) or 
-                re.search(r'Strategy Name:', description, re.IGNORECASE)):
+        # Strategy name check (flexible format)
+        if not any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+            r'\[Strategy Name\]:\s*\S+',
+            r'Strategy Name:\s*\S+',
+            r'Name:\s*\S+'
+        ]):
             missing_fields.append("Strategy Name")
         
-        # Entry conditions check (more flexible)
-        if not (re.search(r'\*\*Entry Conditions:\*\*', description) or 
-                re.search(r'Entry Conditions:', description, re.IGNORECASE) or
-                re.search(r'Entry Rules:', description, re.IGNORECASE)):
+        # Entry conditions check (flexible format)
+        if not any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+            r'Entry Conditions:',
+            r'When to Buy:',
+            r'Entry Rules:',
+            r'Buy Signals:'
+        ]):
             missing_fields.append("Entry Conditions")
         
-        # Exit conditions check (more flexible)
-        if not (re.search(r'\*\*Exit Conditions:\*\*', description) or 
-                re.search(r'Exit Conditions:', description, re.IGNORECASE) or
-                re.search(r'Exit Rules:', description, re.IGNORECASE)):
+        # Exit conditions check (flexible format)
+        if not any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+            r'Exit Conditions:',
+            r'When to Sell:',
+            r'Exit Rules:',
+            r'Sell Signals:'
+        ]):
             missing_fields.append("Exit Conditions")
         
         # Position management check
-        if not (re.search(r'Position Size:', description, re.IGNORECASE) or
-                re.search(r'Position Management:', description, re.IGNORECASE)):
-            missing_fields.append("Position Size")
+        if not any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+            r'Position Size:',
+            r'Position Management:',
+            r'Trade Size:'
+        ]):
+            missing_fields.append("Position Management")
         
-        # Risk management check (more flexible)
+        # Risk management check
         has_risk_management = (
-            (re.search(r'Stop Loss:', description, re.IGNORECASE) and
-             re.search(r'Take Profit:', description, re.IGNORECASE)) or
-            re.search(r'Risk Management:', description, re.IGNORECASE)
+            any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+                r'Risk Management:',
+                r'Stop Loss:.*?(\d+\.?\d*)%',
+                r'Take Profit:.*?(\d+\.?\d*)%'
+            ])
         )
         if not has_risk_management:
-            missing_fields.append("Risk Management (Stop Loss/Take Profit)")
+            missing_fields.append("Risk Management")
         
-        # Timeframe check (more flexible)
-        if not (re.search(r'Timeframe:', description, re.IGNORECASE) or
-                re.search(r'Time Frame:', description, re.IGNORECASE) or
-                re.search(r'Trading Interval:', description, re.IGNORECASE)):
+        # Timeframe check
+        if not any(re.search(pattern, description, re.IGNORECASE) for pattern in [
+            r'Timeframe:',
+            r'Time Frame:',
+            r'Trading Interval:',
+            r'Trading Period:'
+        ]):
             missing_fields.append("Timeframe")
         
         return missing_fields
 
     def _parse_strategy_description(self, description: str) -> Dict:
-        """Enhanced strategy parser with support for complex conditions."""
+        """Enhanced strategy parser with support for various formats."""
         try:
-            # Extract strategy name (more flexible)
-            strategy_name = (
-                re.search(r'\[Strategy Name\]:\s*([^\n]+)', description) or
-                re.search(r'Strategy Name:\s*([^\n]+)', description, re.IGNORECASE)
-            )
+            # Extract strategy name (flexible format)
+            strategy_name = None
+            for pattern in [
+                r'\[Strategy Name\]:\s*([^\n]+)',
+                r'Strategy Name:\s*([^\n]+)',
+                r'Name:\s*([^\n]+)'
+            ]:
+                match = re.search(pattern, description, re.IGNORECASE)
+                if match:
+                    strategy_name = match.group(1).strip()
+                    break
+            
             if not strategy_name:
-                raise ValueError("Strategy name is required")
+                raise ValueError("""Strategy name is required. 
+                Use one of these formats:
+                - [Strategy Name]: Your Strategy
+                - Strategy Name: Your Strategy
+                - Name: Your Strategy""")
 
-            # Extract position size (support for decimal percentages)
-            position_size = re.search(
+            # Extract position management (flexible format)
+            position_size = None
+            for pattern in [
                 r'Position Size:.*?(\d+\.?\d*)%',
-                description,
-                re.IGNORECASE | re.DOTALL
-            )
+                r'Position Management:.*?(\d+\.?\d*)%.*?(?:of|per)',
+                r'Trade Size:.*?(\d+\.?\d*)%'
+            ]:
+                match = re.search(pattern, description, re.IGNORECASE | re.DOTALL)
+                if match:
+                    position_size = float(match.group(1))
+                    break
 
-            # Extract risk parameters (support for decimal percentages)
-            stop_loss = re.search(
-                r'Stop Loss:.*?(\d+\.?\d*)%',
-                description,
-                re.IGNORECASE | re.DOTALL
-            )
-            take_profit = re.search(
-                r'Take Profit:.*?(\d+\.?\d*)%',
-                description,
-                re.IGNORECASE | re.DOTALL
-            )
+            if not position_size:
+                position_size = 10.0  # Default position size
 
-            # Extract trailing stop with conditions
+            # Extract risk parameters
+            stop_loss = None
+            take_profit = None
+            
+            sl_match = re.search(r'Stop Loss:.*?(\d+\.?\d*)%', description, re.IGNORECASE | re.DOTALL)
+            if sl_match:
+                stop_loss = float(sl_match.group(1))
+            
+            tp_match = re.search(r'Take Profit:.*?(\d+\.?\d*)%', description, re.IGNORECASE | re.DOTALL)
+            if tp_match:
+                take_profit = float(tp_match.group(1))
+
+            # Extract trailing stop
             trailing_stop = self._parse_trailing_stop(description)
 
-            # Extract timeframe
-            timeframe = re.search(
+            # Extract timeframe (flexible format)
+            timeframe = None
+            for pattern in [
                 r'Timeframe:.*?(\d+)[-\s]?(minute|hour|day|week|m|h|d|w)',
-                description,
-                re.IGNORECASE | re.DOTALL
-            )
+                r'Time Frame:.*?(\d+)[-\s]?(minute|hour|day|week|m|h|d|w)',
+                r'Trading Period:.*?(\d+)[-\s]?(minute|hour|day|week|m|h|d|w)'
+            ]:
+                match = re.search(pattern, description, re.IGNORECASE | re.DOTALL)
+                if match:
+                    timeframe = self._parse_timeframe(match.group(0))
+                    break
+
+            if not timeframe:
+                timeframe = "1d"  # Default timeframe
 
             # Extract trading hours
             trading_hours = self._parse_trading_hours(description)
@@ -283,19 +445,22 @@ class StrategyBuilder:
             exit_conditions = self._extract_exit_conditions(description)
 
             if not entry_conditions:
-                raise ValueError("At least one entry condition is required")
+                raise ValueError("""Entry conditions are required.
+                Please specify at least one entry condition in your strategy.""")
+                
             if not exit_conditions:
-                raise ValueError("At least one exit condition is required")
+                raise ValueError("""Exit conditions are required.
+                Please specify at least one exit condition in your strategy.""")
 
             # Build strategy configuration
             strategy = {
-                'name': strategy_name.group(1).strip(),
+                'name': strategy_name,
                 'entry_conditions': entry_conditions,
                 'exit_conditions': exit_conditions,
-                'position_size': float(position_size.group(1)) if position_size else 10.0,
-                'stop_loss': float(stop_loss.group(1)) if stop_loss else None,
-                'take_profit': float(take_profit.group(1)) if take_profit else None,
-                'timeframe': self._parse_timeframe(timeframe.group() if timeframe else '1-day'),
+                'position_size': position_size,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'timeframe': timeframe,
                 'max_trades': self._parse_max_trades(description),
                 'trailing_stop': trailing_stop,
                 'market_conditions': market_conditions,
@@ -308,7 +473,7 @@ class StrategyBuilder:
             return strategy
 
         except Exception as e:
-            raise ValueError(f"Error parsing strategy: {str(e)}")
+            raise ValueError(f"Error parsing strategy: {str(e)}\nPlease check the strategy template for the correct format.")
 
     def _parse_trailing_stop(self, description: str) -> Optional[Dict]:
         """Parse trailing stop with conditions."""
@@ -377,172 +542,100 @@ class StrategyBuilder:
         return conditions
 
     def _extract_entry_conditions(self, description: str) -> List[Dict]:
-        """Enhanced entry condition extraction with support for multiple patterns."""
+        """Extract entry conditions from strategy description."""
         conditions = []
-        entry_section = (
-            re.search(r'\*\*Entry Conditions:\*\*(.*?)(?:\*\*|$)', description, re.DOTALL) or
-            re.search(r'Entry Conditions:(.*?)(?:\n\n|$)', description, re.DOTALL)
-        )
+        entry_section = re.search(r'Entry Conditions:(.*?)(?:Exit Conditions:|$)', 
+                                description, re.IGNORECASE | re.DOTALL)
         
         if entry_section:
             text = entry_section.group(1).lower()
             
-            # Extract candlestick patterns
+            # Parse moving average conditions
+            ma_pattern = r'(\d+)[-\s]?(?:day|hour|min)?[-\s]?(sma|ema|vwap)'
+            ma_matches = re.finditer(ma_pattern, text)
+            for match in ma_matches:
+                conditions.append({
+                    'type': 'moving_average',
+                    'period': int(match.group(1)),
+                    'ma_type': match.group(2).upper()
+                })
+            
+            # Parse RSI conditions
+            rsi_pattern = r'rsi.*?(?:below|under|above|over)\s*(\d+)'
+            rsi_matches = re.finditer(rsi_pattern, text)
+            for match in rsi_matches:
+                conditions.append({
+                    'type': 'rsi',
+                    'threshold': int(match.group(1))
+                })
+            
+            # Parse volume conditions
+            vol_pattern = r'volume.*?(\d+)%?.*?(?:average|avg)'
+            vol_matches = re.finditer(vol_pattern, text)
+            for match in vol_matches:
+                conditions.append({
+                    'type': 'volume',
+                    'threshold': int(match.group(1))
+                })
+            
+            # Parse candlestick patterns
             for pattern in self.candlestick_patterns:
                 if pattern in text:
                     conditions.append({
                         'type': 'candlestick',
                         'pattern': pattern
                     })
-            
-            # Moving Average patterns (enhanced)
-            ma_matches = re.finditer(
-                r'(?:buy|enter).*?(\d+)[-\s]?(?:day|hour|min)?(?:\s+)?'
-                r'(sma|ema|vwap).*?(?:cross(?:es)?|above|below).*?'
-                r'(\d+)[-\s]?(?:day|hour|min)?',
-                text
-            )
-            
-            for match in ma_matches:
-                conditions.append({
-                    'type': 'moving_average_cross',
-                    'period1': int(match.group(1)),
-                    'ma_type1': match.group(2).upper(),
-                    'direction': 'above' if 'above' in match.group(0) else 'below',
-                    'period2': int(match.group(3)),
-                    'ma_type2': match.group(2).upper()
-                })
-            
-            # RSI patterns (enhanced)
-            rsi_matches = re.finditer(
-                r'rsi.*?(?:cross(?:es)?|above|below|over|under)\s*(\d+)',
-                text
-            )
-            
-            for match in rsi_matches:
-                conditions.append({
-                    'type': 'rsi',
-                    'direction': 'below' if any(x in match.group(0) for x in ['below', 'under']) else 'above',
-                    'value': int(match.group(1))
-                })
-            
-            # Volume conditions
-            volume_matches = re.finditer(
-                r'volume.*?(\d+)%?.*?(?:average|avg|mean)',
-                text
-            )
-            
-            for match in volume_matches:
-                conditions.append({
-                    'type': 'volume',
-                    'threshold': int(match.group(1)),
-                    'comparison': 'above' if 'above' in match.group(0) else 'below'
-                })
-
+        
         return conditions
 
     def _extract_exit_conditions(self, description: str) -> List[Dict]:
-        """Enhanced exit condition extraction with support for multiple patterns."""
+        """Extract exit conditions from strategy description."""
         conditions = []
-        exit_section = (
-            re.search(r'\*\*Exit Conditions:\*\*(.*?)(?:\*\*|$)', description, re.DOTALL) or
-            re.search(r'Exit Conditions:(.*?)(?:\n\n|$)', description, re.DOTALL)
-        )
+        exit_section = re.search(r'Exit Conditions:(.*?)(?:Position Management:|$)', 
+                               description, re.IGNORECASE | re.DOTALL)
         
         if exit_section:
             text = exit_section.group(1).lower()
             
-            # Extract candlestick patterns
-            for pattern in self.candlestick_patterns:
-                if pattern in text:
-                    conditions.append({
-                        'type': 'candlestick',
-                        'pattern': pattern
-                    })
-            
-            # Moving Average patterns (enhanced)
-            ma_matches = re.finditer(
-                r'(?:sell|exit).*?(\d+)[-\s]?(?:day|hour|min)?(?:\s+)?'
-                r'(sma|ema|vwap).*?(?:cross(?:es)?|above|below).*?'
-                r'(\d+)[-\s]?(?:day|hour|min)?',
-                text
-            )
-            
-            for match in ma_matches:
+            # Parse stop loss
+            sl_pattern = r'stop[-\s]?loss.*?(\d+\.?\d*)%'
+            sl_match = re.search(sl_pattern, text)
+            if sl_match:
                 conditions.append({
-                    'type': 'moving_average_cross',
-                    'period1': int(match.group(1)),
-                    'ma_type1': match.group(2).upper(),
-                    'direction': 'above' if 'above' in match.group(0) else 'below',
-                    'period2': int(match.group(3)),
-                    'ma_type2': match.group(2).upper()
+                    'type': 'stop_loss',
+                    'percentage': float(sl_match.group(1))
                 })
             
-            # RSI patterns (enhanced)
-            rsi_matches = re.finditer(
-                r'rsi.*?(?:cross(?:es)?|above|below|over|under)\s*(\d+)',
-                text
-            )
-            
-            for match in rsi_matches:
+            # Parse take profit
+            tp_pattern = r'take[-\s]?profit.*?(\d+\.?\d*)%'
+            tp_match = re.search(tp_pattern, text)
+            if tp_match:
                 conditions.append({
-                    'type': 'rsi',
-                    'direction': 'below' if any(x in match.group(0) for x in ['below', 'under']) else 'above',
-                    'value': int(match.group(1))
+                    'type': 'take_profit',
+                    'percentage': float(tp_match.group(1))
                 })
             
-            # Time-based conditions
-            time_matches = re.finditer(
-                r'(?:after|before)\s+(\d{1,2}:\d{2})\s*([A-Za-z]{2,4})?',
-                text
-            )
-            
-            for match in time_matches:
+            # Parse trailing stop
+            ts_pattern = r'trailing[-\s]?stop.*?(\d+\.?\d*)%'
+            ts_match = re.search(ts_pattern, text)
+            if ts_match:
                 conditions.append({
-                    'type': 'time',
-                    'time': match.group(1),
-                    'timezone': match.group(2) if match.group(2) else 'UTC'
+                    'type': 'trailing_stop',
+                    'percentage': float(ts_match.group(1))
                 })
-
+            
+            # Parse indicator-based exits
+            for condition in self._extract_entry_conditions(text):
+                condition['context'] = 'exit'
+                conditions.append(condition)
+        
         return conditions
-
-    def _parse_max_trades(self, description: str) -> int:
-        """Parse maximum number of simultaneous trades."""
-        max_trades_match = re.search(
-            r'Maximum Positions:\s*(\d+)',
-            description,
-            re.IGNORECASE
-        )
-        return int(max_trades_match.group(1)) if max_trades_match else 1
-
-    def _validate_strategy_parameters(self, strategy: Dict) -> None:
-        """Validate strategy parameters with enhanced checks."""
-        if strategy['position_size'] <= 0 or strategy['position_size'] > 100:
-            raise ValueError("Position size must be between 0 and 100%")
-        
-        if strategy['stop_loss'] and (strategy['stop_loss'] <= 0 or strategy['stop_loss'] >= 100):
-            raise ValueError("Stop loss must be between 0 and 100%")
-        
-        if strategy['take_profit'] and (strategy['take_profit'] <= 0 or strategy['take_profit'] >= 100):
-            raise ValueError("Take profit must be between 0 and 100%")
-        
-        if strategy['stop_loss'] and strategy['take_profit']:
-            if strategy['take_profit'] <= strategy['stop_loss']:
-                raise ValueError("Take profit must be greater than stop loss")
-        
-        if strategy.get('trailing_stop'):
-            if strategy['trailing_stop']['percentage'] <= 0 or strategy['trailing_stop']['percentage'] >= 100:
-                raise ValueError("Trailing stop percentage must be between 0 and 100%")
-            
-            if 'activation_percentage' in strategy['trailing_stop']:
-                if strategy['trailing_stop']['activation_percentage'] <= 0:
-                    raise ValueError("Trailing stop activation percentage must be positive")
 
     def _parse_timeframe(self, timeframe_str: str) -> str:
         """Convert timeframe string to standard format."""
         if not timeframe_str:
             return '1d'
-            
+        
         timeframe_str = timeframe_str.lower()
         value = re.search(r'(\d+)', timeframe_str)
         value = value.group(1) if value else '1'
@@ -558,83 +651,98 @@ class StrategyBuilder:
         
         return '1d'
 
+    def _parse_max_trades(self, description: str) -> int:
+        """Parse maximum concurrent trades."""
+        match = re.search(r'Maximum Positions:.*?(\d+)', description, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        return 1
+
+    def _validate_strategy_parameters(self, strategy: Dict):
+        """Validate strategy parameters to ensure consistency."""
+        # Validate position size
+        if strategy['position_size'] <= 0 or strategy['position_size'] > 100:
+            raise ValueError("Invalid position size. Position size must be between 1% and 100%.")
+
+        # Validate stop loss
+        if strategy.get('stop_loss'):
+            if strategy['stop_loss'] <= 0:
+                raise ValueError("Invalid stop loss value. Stop loss must be greater than 0%.")
+
+        # Validate take profit
+        if strategy.get('take_profit'):
+            if strategy['take_profit'] <= 0:
+                raise ValueError("Invalid take profit value. Take profit must be greater than 0%.")
+
+        # Validate trailing stop
+        if strategy.get('trailing_stop'):
+            if strategy['trailing_stop']['percentage'] <= 0:
+                raise ValueError("Invalid trailing stop value. Trailing stop percentage must be greater than 0%.")
+
+        # Validate maximum trades
+        if strategy['max_trades'] <= 0:
+            raise ValueError("Invalid maximum trades value. Maximum trades must be greater than 0.")
+
+        # Validate trading hours
+        if strategy.get('trading_hours'):
+            start_time = datetime.strptime(strategy['trading_hours']['start'], "%H:%M").time()
+            end_time = datetime.strptime(strategy['trading_hours']['end'], "%H:%M").time()
+            if start_time >= end_time:
+                raise ValueError("Invalid trading hours. Start time must be before end time.")
+
+        # Validate market conditions
+        if strategy.get('market_conditions'):
+            if 'volatility' in strategy['market_conditions']:
+                if strategy['market_conditions']['volatility'] <= 0:
+                    raise ValueError("Invalid volatility value. Volatility must be greater than 0%.")
+            if 'volume_threshold' in strategy['market_conditions']:
+                if strategy['market_conditions']['volume_threshold'] <= 0:
+                    raise ValueError("Invalid volume threshold value. Volume threshold must be greater than 0.")
+
     def _display_parsed_strategy(self, strategy: Dict):
-        """Display parsed strategy parameters with enhanced formatting."""
+        """Display parsed strategy parameters."""
         st.markdown("### Parsed Strategy Parameters")
         
-        # Strategy Overview
-        st.markdown(f"""
-        #### Strategy: {strategy.get('name', 'Unnamed Strategy')}
-        """)
+        # Strategy name
+        st.markdown(f"#### {strategy.get('name', 'Unnamed Strategy')}")
         
-        # Display parameters in columns
+        # Display metrics in columns
         col1, col2 = st.columns(2)
         
         with col1:
             st.metric(
                 "Position Size",
                 f"{strategy['position_size']}%",
-                help="Percentage of capital to use per trade"
+                help="Percentage of capital per trade"
             )
             st.metric(
                 "Stop Loss",
-                f"{strategy['stop_loss']}%" if strategy['stop_loss'] else "Not Set",
-                help="Price level where position will be closed to limit losses"
+                f"{strategy.get('stop_loss', 'Not Set')}%",
+                help="Stop loss percentage"
             )
-            if strategy.get('trailing_stop'):
-                st.metric(
-                    "Trailing Stop",
-                    f"{strategy['trailing_stop']['percentage']}%",
-                    help="Dynamic stop loss that follows price movement"
-                )
         
         with col2:
             st.metric(
-                "Timeframe",
-                strategy['timeframe'],
-                help="Trading interval for analysis and execution"
-            )
-            st.metric(
                 "Take Profit",
-                f"{strategy['take_profit']}%" if strategy['take_profit'] else "Not Set",
-                help="Price level where position will be closed to secure profits"
+                f"{strategy.get('take_profit', 'Not Set')}%",
+                help="Take profit percentage"
             )
             st.metric(
-                "Max Trades",
-                strategy['max_trades'],
-                help="Maximum number of simultaneous positions"
-            )
-        
-        # Display market conditions if present
-        if strategy.get('market_conditions'):
-            st.markdown("#### Market Conditions")
-            market_conditions = strategy['market_conditions']
-            if 'volatility' in market_conditions:
-                st.metric("Volatility Threshold", f"{market_conditions['volatility']}%")
-            if 'volume_threshold' in market_conditions:
-                st.metric("Volume Requirement", f"{market_conditions['volume_threshold']}x average")
-            if 'market_phase' in market_conditions:
-                st.info(f"Market Phase: {market_conditions['market_phase'].title()}")
-        
-        # Display trading hours if present
-        if strategy.get('trading_hours'):
-            st.markdown("#### Trading Schedule")
-            trading_hours = strategy['trading_hours']
-            st.info(
-                f"Trading Hours: {trading_hours['start']} - {trading_hours['end']} {trading_hours['timezone']}\n"
-                f"Weekend Trading: {'Yes' if trading_hours['weekend_trading'] else 'No'}"
+                "Timeframe",
+                strategy.get('timeframe', '1d'),
+                help="Trading timeframe"
             )
         
         # Display conditions
         st.markdown("#### Entry Conditions")
-        if strategy['entry_conditions']:
+        if strategy.get('entry_conditions'):
             for condition in strategy['entry_conditions']:
                 st.code(str(condition))
         else:
             st.warning("No entry conditions defined")
         
         st.markdown("#### Exit Conditions")
-        if strategy['exit_conditions']:
+        if strategy.get('exit_conditions'):
             for condition in strategy['exit_conditions']:
                 st.code(str(condition))
         else:

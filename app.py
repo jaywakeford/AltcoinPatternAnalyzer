@@ -16,6 +16,7 @@ from components.metrics import render_market_metrics
 from components.sentiment import render_sentiment_analysis
 from components.backtesting import render_backtesting_section
 from components.predictions import render_prediction_section
+from components.altcoin_analysis import render_altcoin_analysis
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
 from dotenv import load_dotenv
@@ -73,6 +74,13 @@ def main():
                 logger.error(f"Error rendering charts: {str(e)}")
                 st.error("Unable to render charts. Please try again later.")
         
+        # Altcoin Analysis Section
+        try:
+            render_altcoin_analysis()
+        except Exception as e:
+            logger.error(f"Error in altcoin analysis: {str(e)}")
+            st.error("Error in altcoin analysis. Some features might be temporarily unavailable.")
+        
         # Sentiment Analysis section
         try:
             if selected_coins:
@@ -103,27 +111,6 @@ def main():
             - Check if selected timeframe has enough historical data
             - Verify strategy parameters
             - Try a different asset or time period
-            """)
-
-        # Phase Analysis
-        st.markdown("---")  # Visual separator
-        st.subheader("Market Phase Analysis")
-        phase_col1, phase_col2 = st.columns(2)
-        
-        with phase_col1:
-            st.markdown("""
-            ### Current Phase Indicators
-            - Bitcoin Price Action
-            - Market Sentiment
-            - Volume Analysis
-            """)
-        
-        with phase_col2:
-            st.markdown("""
-            ### Strategy Recommendations
-            - Focus on large-cap assets
-            - Monitor volume triggers
-            - Watch for altcoin momentum
             """)
     
     except Exception as e:
