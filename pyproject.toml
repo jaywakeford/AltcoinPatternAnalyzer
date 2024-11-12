@@ -18,7 +18,9 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "streamlit==1.40.0",
+    "ta",
     "textblob>=0.18.0.post0",
     "tweepy>=4.14.0",
     "vadersentiment>=3.3.2",
+    "yfinance",
 ]

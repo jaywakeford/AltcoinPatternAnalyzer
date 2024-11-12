@@ -60,14 +60,25 @@ def main():
     except Exception as e:
         st.error(f"Error rendering dominance chart: {str(e)}")
     
-    # Backtesting section
+    # Add visual separator before backtesting section
+    st.markdown("---")
+    
+    # Backtesting section with improved error handling
     try:
         render_backtesting_section()
     except Exception as e:
-        st.error(f"Error in backtesting module: {str(e)}")
-        st.info("Please check your strategy parameters and try again.")
-
+        st.error("Error in backtesting module:")
+        st.error(str(e))
+        st.info("""
+        💡 Troubleshooting tips:
+        - Check if the selected timeframe has enough historical data
+        - Verify that all strategy parameters are within valid ranges
+        - Ensure you have a stable internet connection
+        - Try refreshing the page if the issue persists
+        """)
+    
     # Phase Analysis
+    st.markdown("---")  # Add separator
     st.subheader("Market Phase Analysis")
     phase_col1, phase_col2 = st.columns(2)
     

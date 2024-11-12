@@ -1,4 +1,6 @@
 import streamlit as st
+import logging
+from datetime import datetime
 
 # Must be the first Streamlit command
 st.set_page_config(
@@ -8,15 +10,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Rest of the imports
 from components.sidebar import render_sidebar
 from components.charts import render_price_charts, render_dominance_chart
 from components.metrics import render_market_metrics
 from components.sentiment import render_sentiment_analysis
+from components.backtesting import render_backtesting_section
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
-import os
-import logging
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -56,6 +56,18 @@ def main():
         except Exception as e:
             logger.error(f"Error fetching market data: {str(e)}")
             st.error("Unable to fetch market data. Please try again later.")
+
+        # Technical Analysis section
+        if selected_coins and df is not None and not df.empty:
+            try:
+                st.subheader("Price Analysis")
+                render_price_charts(df, selected_indicators)
+                
+                st.subheader("Bitcoin Dominance Trend")
+                render_dominance_chart(timeframe)
+            except Exception as e:
+                logger.error(f"Error rendering charts: {str(e)}")
+                st.error("Unable to render charts. Please try again later.")
         
         # Sentiment Analysis section
         try:
@@ -74,17 +86,41 @@ def main():
             Try refreshing in a few minutes if the issue persists.
             """)
         
-        # Technical Analysis section
-        if selected_coins and df is not None and not df.empty:
-            try:
-                st.subheader("Price Analysis")
-                render_price_charts(df, selected_indicators)
-                
-                st.subheader("Bitcoin Dominance Trend")
-                render_dominance_chart(timeframe)
-            except Exception as e:
-                logger.error(f"Error rendering charts: {str(e)}")
-                st.error("Unable to render charts. Please try again later.")
+        # Backtesting section - moved before Market Phase Analysis
+        st.markdown("---")  # Visual separator
+        try:
+            render_backtesting_section()
+        except Exception as e:
+            logger.error(f"Error in backtesting module: {str(e)}")
+            st.error("Backtesting error:")
+            st.error(str(e))
+            st.info("""
+            💡 Troubleshooting tips:
+            - Check if selected timeframe has enough historical data
+            - Verify strategy parameters
+            - Try a different asset or time period
+            """)
+
+        # Phase Analysis
+        st.markdown("---")  # Visual separator
+        st.subheader("Market Phase Analysis")
+        phase_col1, phase_col2 = st.columns(2)
+        
+        with phase_col1:
+            st.markdown("""
+            ### Current Phase Indicators
+            - Bitcoin Price Action
+            - Market Sentiment
+            - Volume Analysis
+            """)
+        
+        with phase_col2:
+            st.markdown("""
+            ### Strategy Recommendations
+            - Focus on large-cap assets
+            - Monitor volume triggers
+            - Watch for altcoin momentum
+            """)
     
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
