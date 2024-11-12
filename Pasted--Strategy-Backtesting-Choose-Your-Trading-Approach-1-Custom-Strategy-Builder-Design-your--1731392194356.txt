@@ -1,0 +1,117 @@
+🔄 Strategy Backtesting
+Choose Your Trading Approach
+1. Custom Strategy Builder 📊
+
+Design your own unique trading strategy
+Full control over entry/exit conditions
+Flexible risk management settings
+Save and load strategy templates
+2. Pre-built Strategies 🚀
+
+Ready-to-use proven strategies
+Configurable parameters
+Quick setup and testing
+Ideal for learning and comparison
+Strategy Mode
+
+
+Custom Strategy Builder
+
+
+Pre-built Strategies
+
+🛠️ Custom Strategy Builder
+Create your own trading strategy with full control over:
+
+Entry and exit conditions
+Risk management rules
+Position sizing
+Market phase analysis
+Use the strategy builder below to define your trading rules.
+
+Strategy Builder
+Strategy Input Method
+
+
+Natural Language
+
+
+Template
+
+
+Manual Builder
+
+Strategy Description Guidelines
+Describe your trading strategy in plain English. Include:
+
+Required Information:
+
+Entry Conditions (e.g., "Buy when 50-day SMA crosses above 200-day SMA")
+Exit Conditions (e.g., "Sell when RSI goes above 70")
+Position Size (e.g., "Use 30% position size")
+Risk Management (e.g., "Set stop loss at 5% and take profit at 15%")
+Optional Information:
+
+Timeframe (e.g., "Use 4-hour timeframe")
+Additional Indicators (e.g., "Monitor volume for confirmation")
+Market Phase Filters (e.g., "Only trade during uptrend")
+Strategy Description
+
+trategy Description: Moving Average Crossover with RSI Confirmation for BTC
+
+Entry Conditions:
+
+Buy when the 50-day Simple Moving Average (SMA) crosses above the 200-day SMA, indicating a potential upward trend (Golden Cross).
+Confirm entry with the Relative Strength Index (RSI) below 70 to avoid overbought conditions.
+Exit Conditions:
+
+Sell when the 50-day SMA crosses below the 200-day SMA, indicating a potential downward trend (Death Cross).
+Alternatively, exit if the RSI goes above 70, suggesting overbought conditions that may precede a reversal.
+Position Size:
+
+Use a 30% position size of total capital for each trade to manage exposure and reduce risk.
+Risk Management:
+
+Set a stop loss at 5% below the entry price to protect against significant losses.
+Take profit when the price reaches 15% above the entry to capture gains while minimizing risk of reversal.
+Optional Information:
+
+Timeframe: Apply this strategy on the daily timeframe for longer-term trend confirmation.
+Additional Indicators: Monitor volume for confirmation; higher volume on crossover events strengthens the buy/sell signal.
+Market Phase Filters: Only apply the strategy when Bitcoin is above its 200-day SMA, indicating a general uptrend to align trades with the broader market direction.
+This approach seeks to capture major upward movements while mitigating downside risks using a combination of moving averages, RSI, and volume as key indicators.
+
+Parsed Strategy Parameters
+Position Size
+
+30.0%
+Stop Loss
+
+5.0%
+Timeframe
+
+1d
+Take Profit
+
+Not Set
+Entry Conditions
+Exit Conditions
+📊 Backtest Configuration
+Asset
+
+bitcoin
+Initial Capital (USD)
+
+10000
+
+
+Strategy Overview
+Backtesting error:
+
+'risk_management'
+
+💡 Troubleshooting tips:
+
+Check if selected timeframe has enough historical data
+Verify strategy parameters
+Try a different asset or time period
