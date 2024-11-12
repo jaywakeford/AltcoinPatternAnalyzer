@@ -101,6 +101,94 @@ class StrategyBuilder:
             '''
         }
 
+    def render(self) -> Optional[Dict]:
+        """Main render method for strategy builder interface."""
+        st.markdown("### Strategy Builder")
+        
+        # Strategy input method selection
+        input_method = st.radio(
+            "Strategy Input Method",
+            ["Natural Language", "Template", "Manual Builder"]
+        )
+        
+        if input_method == "Natural Language":
+            return self._render_natural_language_input()
+        elif input_method == "Template":
+            return self._render_template_selection()
+        else:
+            return self._render_manual_builder()
+
+    def _render_natural_language_input(self) -> Optional[Dict]:
+        """Render natural language input interface."""
+        st.markdown('''
+        Describe your trading strategy in plain English. Include:
+        - Entry conditions (when to buy/sell)
+        - Exit conditions
+        - Position size (optional, default 10%)
+        - Stop loss and take profit levels (optional)
+        - Timeframe (optional, default 1-day)
+        ''')
+        
+        description = st.text_area(
+            "Strategy Description",
+            height=150,
+            help="Describe your trading strategy in natural language"
+        )
+        
+        if description:
+            try:
+                missing_fields = self._validate_required_fields(description)
+                if missing_fields:
+                    st.error(f"Missing required fields: {', '.join(missing_fields)}")
+                    return None
+                    
+                strategy = self._parse_strategy_description(description)
+                return strategy
+            except Exception as e:
+                st.error(f"Error parsing strategy: {str(e)}")
+                return None
+        return None
+
+    def _render_template_selection(self) -> Optional[Dict]:
+        """Render template selection interface."""
+        st.markdown("### Strategy Templates")
+        template_name = st.selectbox(
+            "Select a template",
+            list(self.strategy_templates.keys())
+        )
+        
+        if template_name:
+            template = self.strategy_templates[template_name]
+            st.text_area("Template Strategy", value=template, height=300, disabled=True)
+            if st.button("Use this template"):
+                return self._parse_strategy_description(template)
+        return None
+
+    def _render_manual_builder(self) -> Optional[Dict]:
+        """Render manual strategy builder interface."""
+        st.markdown("### Manual Strategy Builder")
+        # Add fields for manual strategy building
+        entry_conditions = []
+        exit_conditions = []
+        
+        position_size = st.number_input("Position Size (%)", 1, 100, 10)
+        stop_loss = st.number_input("Stop Loss (%)", 0, 100, 5)
+        take_profit = st.number_input("Take Profit (%)", 0, 100, 15)
+        timeframe = st.selectbox("Timeframe", ["1d", "4h", "1h", "15m"])
+        max_trades = st.number_input("Maximum Concurrent Trades", 1, 10, 1)
+        
+        if st.button("Create Strategy"):
+            return {
+                'entry_conditions': entry_conditions,
+                'exit_conditions': exit_conditions,
+                'position_size': position_size,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'timeframe': timeframe,
+                'max_trades': max_trades
+            }
+        return None
+
     def _validate_required_fields(self, description: str) -> List[str]:
         """Validate required fields with more flexible format recognition."""
         missing_fields = []
