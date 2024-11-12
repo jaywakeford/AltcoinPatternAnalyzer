@@ -241,3 +241,8 @@ To fix this error, please pass a unique `key` argument to the `radio` element.
 2024-11-12 21:48:06,392 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 21:48:06,429 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 21:48:08,059 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:48:26,593 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:48:36,107 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:49:32,603 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:50:06,123 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:50:08,057 - utils.altcoin_analyzer - INFO - Successfully connected to kraken

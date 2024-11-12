@@ -7,7 +7,7 @@ from components.strategy_builder import StrategyBuilder
 from datetime import datetime
 
 def render_backtesting_section():
-    """Render the backtesting interface with separate tabs for builder and results."""
+    """Render the backtesting interface with a streamlined layout."""
     st.subheader("🔄 Strategy Development & Testing")
     
     st.markdown("""
@@ -17,29 +17,23 @@ def render_backtesting_section():
     3. Analyze performance metrics and results
     """)
     
-    # Create tabs for strategy building and backtesting
-    strategy_tab, backtest_tab = st.tabs([
-        "Build Strategy",
-        "Test Strategy"
-    ])
+    # Strategy Builder Section
+    st.markdown("### Strategy Builder")
+    strategy_builder = StrategyBuilder()
+    result = strategy_builder.render()
     
-    with strategy_tab:
-        strategy_builder = StrategyBuilder()
-        result = strategy_builder.render()
+    if result:
+        strategy_config, backtest_config = result
+        st.session_state['current_strategy'] = strategy_config
+        st.session_state['current_backtest'] = backtest_config
         
-        if result:
-            strategy_config, backtest_config = result
-            st.session_state['current_strategy'] = strategy_config
-            st.session_state['current_backtest'] = backtest_config
-            
-            if st.button("▶️ Run Strategy Test", key=f"run_backtest_{datetime.now().timestamp()}"):
-                _run_backtest(strategy_config, backtest_config)
+        if st.button("▶️ Run Strategy Test", key=f"run_backtest_{datetime.now().timestamp()}"):
+            _run_backtest(strategy_config, backtest_config)
     
-    with backtest_tab:
-        if 'backtest_results' in st.session_state:
-            _display_backtest_results(st.session_state['backtest_results'])
-        else:
-            st.info("Create a strategy and run a test to see results here")
+    # Results Section
+    if 'backtest_results' in st.session_state:
+        st.markdown("### Backtest Results")
+        _display_backtest_results(st.session_state['backtest_results'])
 
 def _validate_backtest_params(strategy_config: dict, backtest_config: dict) -> bool:
     """Validate backtest parameters before execution."""

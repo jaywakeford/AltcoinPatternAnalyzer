@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 import sys
 
-# Configure logging with more detailed error tracking
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -34,7 +34,6 @@ from components.sentiment import render_sentiment_analysis
 from components.backtesting import render_backtesting_section
 from components.predictions import render_prediction_section
 from components.altcoin_analysis import render_altcoin_analysis
-from components.strategy_builder import StrategyBuilder
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
 from dotenv import load_dotenv
@@ -46,7 +45,7 @@ def handle_websocket_error():
     """Handle WebSocket connection errors."""
     st.warning("Connection issue detected. Trying to reconnect...")
     try:
-        st.experimental_rerun()
+        st.rerun()
     except Exception as e:
         logger.error(f"Failed to reconnect: {str(e)}")
         st.error("Unable to establish connection. Please refresh the page.")
@@ -69,84 +68,67 @@ def main():
             # Fetch data for the first selected coin
             if selected_coins:
                 df = get_crypto_data(selected_coins[0], timeframe)
-                if not df.empty:
-                    # Market metrics section
-                    col1, col2, col3 = st.columns(3)
-                    render_market_metrics(df, col1, col2, col3)
-                else:
+                if df.empty:
                     st.warning("No market data available. Please try again later.")
         except Exception as e:
             logger.error(f"Error fetching market data: {str(e)}")
             st.error("Unable to fetch market data. Please try again later.")
-        
-        # Strategy Builder section
-        try:
-            st.markdown("---")  # Visual separator
-            strategy_builder = StrategyBuilder()
-            strategy_config = strategy_builder.render()
-            
-            if strategy_config:
-                st.success("Strategy configured successfully!")
-                logger.info("New strategy created")
-        except Exception as e:
-            logger.error(f"Error in strategy builder: {str(e)}")
-            st.error("Error in strategy builder. Please try again.")
-            st.info("""
-            💡 Troubleshooting tips:
-            - Check your strategy parameters
-            - Ensure all required fields are filled
-            - Try simplifying your strategy rules
-            """)
-        
-        # Technical Analysis section
-        if selected_coins and df is not None and not df.empty:
-            try:
+            return
+
+        # Create main tabs
+        tabs = st.tabs([
+            "Price Analysis & Predictions",
+            "Altcoin Analysis & Strategy",
+            "Strategy Builder & Testing"
+        ])
+
+        with tabs[0]:
+            if df is not None and not df.empty:
+                # Market metrics in first tab
+                col1, col2, col3 = st.columns(3)
+                render_market_metrics(df, col1, col2, col3)
+                
+                # Price Analysis section
                 st.subheader("Price Analysis")
                 render_price_charts(df, selected_indicators)
                 
-                # Add prediction section here
+                # Predictions section
                 render_prediction_section(df)
                 
+                # Bitcoin dominance
                 st.subheader("Bitcoin Dominance Trend")
                 render_dominance_chart(timeframe)
+                
+                # Sentiment Analysis
+                if selected_coins:
+                    st.subheader("Market Sentiment Analysis")
+                    st.caption("""
+                    Sentiment analysis combines data from multiple sources including news feeds, 
+                    price movements, and social media. Hover over the metrics to see more details 
+                    about confidence scores and data sources.
+                    """)
+                    render_sentiment_analysis(selected_coins)
+
+        with tabs[1]:
+            try:
+                render_altcoin_analysis()
             except Exception as e:
-                logger.error(f"Error rendering charts: {str(e)}")
-                st.error("Unable to render charts. Please try again later.")
-        
-        # Altcoin Analysis Section
-        try:
-            render_altcoin_analysis()
-        except Exception as e:
-            logger.error(f"Error in altcoin analysis: {str(e)}")
-            st.error("Error in altcoin analysis. Some features might be temporarily unavailable.")
-        
-        # Sentiment Analysis section
-        try:
-            if selected_coins:
-                st.subheader("Social Media & News Sentiment Analysis")
-                st.caption("""
-                Sentiment analysis combines data from multiple sources including social media, news feeds, and market data.
-                The analysis provides real-time insights into market sentiment across different platforms.
+                logger.error(f"Error in altcoin analysis: {str(e)}")
+                st.error("Error in altcoin analysis. Some features might be temporarily unavailable.")
+
+        with tabs[2]:
+            try:
+                render_backtesting_section()
+            except Exception as e:
+                logger.error(f"Error in backtesting module: {str(e)}")
+                st.error("Backtesting error:")
+                st.error(str(e))
+                st.info("""
+                💡 Troubleshooting tips:
+                - Check if selected timeframe has enough historical data
+                - Verify strategy parameters
+                - Try a different asset or time period
                 """)
-                render_sentiment_analysis(selected_coins)
-        except Exception as e:
-            logger.error(f"Error in sentiment analysis: {str(e)}")
-            st.error("Error in sentiment analysis. Some data sources might be temporarily unavailable.")
-        
-        # Backtesting section with improved error handling
-        st.markdown("---")  # Visual separator
-        try:
-            render_backtesting_section()
-        except Exception as e:
-            logger.error(f"Error in backtesting module: {str(e)}")
-            st.error("Backtesting error:")
-            st.error(str(e))
-            st.info("""
-            💡 Troubleshooting tips:
-            - Check if selected timeframe has enough historical data
-            - Verify strategy parameters
-            - Try a different asset or time period
-            """)
     
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
