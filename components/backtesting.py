@@ -11,32 +11,53 @@ def render_backtesting_section():
     
     # Add description
     st.markdown("""
-    Test your trading strategies using historical cryptocurrency data. You can either:
-    1. Use pre-built strategies with configurable parameters
-    2. Create a custom strategy using the strategy builder
+    ### Choose Your Trading Approach
+    
+    **1. Custom Strategy Builder** 📊
+    - Design your own unique trading strategy
+    - Full control over entry/exit conditions
+    - Flexible risk management settings
+    - Save and load strategy templates
+    
+    **2. Pre-built Strategies** 🚀
+    - Ready-to-use proven strategies
+    - Configurable parameters
+    - Quick setup and testing
+    - Ideal for learning and comparison
     """)
     
-    # Strategy Selection
+    # Strategy Selection with more prominent custom option
     strategy_mode = st.radio(
         "Strategy Mode",
-        ["Pre-built Strategies", "Custom Strategy Builder"]
+        ["Custom Strategy Builder", "Pre-built Strategies"],
+        help="Choose between creating your own strategy or using pre-built ones"
     )
     
-    if strategy_mode == "Pre-built Strategies":
-        _render_prebuilt_strategy_section()
-    else:
+    st.markdown("---")
+    
+    if strategy_mode == "Custom Strategy Builder":
         _render_custom_strategy_section()
+    else:
+        _render_prebuilt_strategy_section()
 
 def _render_prebuilt_strategy_section():
     """Render the pre-built strategy configuration section."""
     with st.expander("Strategy Configuration", expanded=True):
+        st.markdown("""
+        ### Pre-built Strategy Setup
+        Configure parameters for established trading strategies:
+        - Trend Following: Based on moving average crossovers
+        - Mean Reversion: Uses RSI for oversold/overbought conditions
+        - Breakout: Identifies price breakouts from ranges
+        """)
+        
         col1, col2 = st.columns(2)
         
         with col1:
             strategy_type = st.selectbox(
                 "Strategy Type",
                 ["Trend Following", "Mean Reversion", "Breakout"],
-                help="Choose your trading strategy"
+                help="Choose your trading strategy type"
             )
             
             timeframe = st.selectbox(
@@ -69,16 +90,29 @@ def _render_prebuilt_strategy_section():
 
 def _render_custom_strategy_section():
     """Render the custom strategy builder section."""
+    st.markdown("""
+    ### 🛠️ Custom Strategy Builder
+    
+    Create your own trading strategy with full control over:
+    - Entry and exit conditions
+    - Risk management rules
+    - Position sizing
+    - Market phase analysis
+    
+    Use the strategy builder below to define your trading rules.
+    """)
+    
     strategy_builder = StrategyBuilder()
     strategy_config = strategy_builder.render()
     
     if strategy_config:
+        st.markdown("### 📊 Backtest Configuration")
         col1, col2 = st.columns(2)
         with col1:
             selected_coin = st.selectbox(
                 "Asset",
                 ["bitcoin", "ethereum", "cardano", "solana"],
-                help="Select cryptocurrency to test"
+                help="Select cryptocurrency to backtest your strategy"
             )
         
         with col2:
@@ -87,10 +121,24 @@ def _render_custom_strategy_section():
                 min_value=1000,
                 value=10000,
                 step=1000,
-                help="Starting capital for backtesting"
+                help="Starting capital for your backtest"
             )
         
-        if st.button("Run Backtest"):
+        # Strategy Summary
+        st.markdown("### Strategy Overview")
+        st.markdown(f"""
+        **Risk Management**
+        - Stop Loss: {strategy_config['risk_management']['stop_loss']}%
+        - Take Profit: {strategy_config['risk_management']['take_profit']}%
+        - Position Size: {strategy_config['position_size']}%
+        
+        **Trading Rules**
+        - Entry Conditions: {len(strategy_config['entry_conditions'])}
+        - Exit Conditions: {len(strategy_config['exit_conditions'])}
+        - Maximum Open Trades: {strategy_config['max_trades']}
+        """)
+        
+        if st.button("▶️ Run Backtest", help="Start the backtesting process with your custom strategy"):
             _run_custom_strategy_backtest(selected_coin, strategy_config, initial_capital)
 
 def _get_strategy_parameters(strategy_type: str) -> dict:
@@ -100,49 +148,54 @@ def _get_strategy_parameters(strategy_type: str) -> dict:
     if strategy_type == "Trend Following":
         col1, col2 = st.columns(2)
         with col1:
-            config['sma_short'] = st.number_input(
+            sma_short = st.number_input(
                 "Short SMA Period",
                 min_value=5,
                 max_value=50,
                 value=20,
                 help="Short-term moving average period"
             )
+            config['sma_short'] = str(sma_short)
         with col2:
-            config['sma_long'] = st.number_input(
+            sma_long = st.number_input(
                 "Long SMA Period",
                 min_value=10,
                 max_value=200,
                 value=50,
                 help="Long-term moving average period"
             )
+            config['sma_long'] = str(sma_long)
     
     elif strategy_type == "Mean Reversion":
         col1, col2 = st.columns(2)
         with col1:
-            config['rsi_period'] = st.number_input(
+            rsi_period = st.number_input(
                 "RSI Period",
                 min_value=2,
                 max_value=30,
                 value=14,
                 help="Period for RSI calculation"
             )
+            config['rsi_period'] = str(rsi_period)
         with col2:
-            config['rsi_threshold'] = st.number_input(
+            rsi_threshold = st.number_input(
                 "RSI Threshold",
                 min_value=10,
                 max_value=40,
                 value=30,
                 help="RSI level for trade signals"
             )
+            config['rsi_threshold'] = str(rsi_threshold)
     
     elif strategy_type == "Breakout":
-        config['lookback'] = st.number_input(
+        lookback = st.number_input(
             "Lookback Period",
             min_value=5,
             max_value=100,
             value=20,
             help="Period for calculating breakout levels"
         )
+        config['lookback'] = str(lookback)
     
     return config
 
