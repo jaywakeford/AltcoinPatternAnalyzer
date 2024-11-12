@@ -1,0 +1,70 @@
+Strategy Builder
+Strategy Input Method
+
+
+Natural Language
+
+
+Template
+
+
+Manual Builder
+
+Strategy Description
+Describe your trading strategy in plain English. Include:
+
+Entry conditions
+Exit conditions
+Position size
+Risk management (stop loss, take profit)
+Strategy Description
+
+Rob's 15-Minute Reversal Trade
+
+Entry Conditions:
+
+Primary Signal: Buy when a bullish reversal candlestick pattern, such as a Hammer or Bullish Engulfing, forms on the 15-minute chart following a clear downtrend. This candle should have a long lower wick, indicating a rejection of lower prices.
+Additional Confirmations: RSI below 30 to confirm oversold conditions, and volume above the 15-minute average (at least 1.2 times the 20-bar average) to strengthen the validity of the reversal.
+Exit Conditions:
+
+Primary Exit: Sell when the price reaches a recent resistance level or a key moving average (e.g., the 50-period MA on the 15-minute chart).
+Safety Exits: Exit if a bearish reversal candle forms, if RSI rises above 70 (indicating overbought conditions), or if the price falls below the 50-period moving average.
+Position Management:
+
+Position Size: 10% of total capital for each trade.
+Maximum Positions: 1 position at a time to manage risk and exposure.
+Risk Management:
+
+Stop Loss: Set stop loss at 1% below the entry price to limit potential losses on rapid reversals.
+Take Profit: Set take profit at 2-3% above the entry price to capture gains from the reversal.
+Trailing Stop: Optional 0.5% trailing stop after the position gains 1%, allowing gains to lock in while the position has upward momentum.
+Trading Schedule:
+
+Timeframe: 15-minute timeframe, ideal for intraday reversals.
+Trading Hours: Focus on high volatility periods or market hours that exhibit strong volume, such as 9:30 AM - 11:30 AM and 2:00 PM - 4:00 PM.
+
+Strategy parsed successfully!
+
+Strategy Summary
+Entry Conditions:
+
+[
+0:"Primary Signal: Buy when a bullish reversal candlestick pattern, such as a Hammer or Bullish Engulfing, forms on the 15-minute chart following a clear downtrend. This candle should have a long lower wick, indicating a rejection of lower prices."
+1:"Additional Confirmations: RSI below 30 to confirm oversold conditions, and volume above the 15-minute average (at least 1.2 times the 20-bar average) to strengthen the validity of the reversal."
+]
+Exit Conditions:
+
+[
+0:"Primary Exit: Sell when the price reaches a recent resistance level or a key moving average (e.g., the 50-period MA on the 15-minute chart)."
+1:"Safety Exits: Exit if a bearish reversal candle forms, if RSI rises above 70 (indicating overbought conditions), or if the price falls below the 50-period moving average."
+2:"Position Management:"
+]
+Position Size: 10.0%
+
+Stop Loss: None%
+
+Take Profit: None%
+
+Timeframe: 15
+
+Strategy configured successfully!
