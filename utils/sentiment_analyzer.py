@@ -64,7 +64,7 @@ class SentimentAnalyzer:
         self._init_twitter_client()
     
     def _init_twitter_client(self):
-        """Initialize Twitter API client with proper error handling."""
+        """Initialize Twitter API client v1.1 with proper error handling."""
         try:
             auth = tweepy.OAuthHandler(
                 os.getenv('TWITTER_API_KEY'),
@@ -75,8 +75,10 @@ class SentimentAnalyzer:
                 os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
             )
             self.twitter_client = tweepy.API(auth, wait_on_rate_limit=True)
+            # Test the connection with a basic endpoint
+            self.twitter_client.verify_credentials()
         except Exception as e:
-            st.warning(f"Twitter client initialization error: {str(e)}")
+            st.warning(f"Twitter API initialization failed: {str(e)}")
             self.twitter_client = None
 
     @st.cache_data(ttl=300, show_spinner=False)
@@ -139,7 +141,7 @@ class SentimentAnalyzer:
                 try:
                     twitter_sentiment = _self._analyze_twitter_sentiment(keyword)
                     if twitter_sentiment:
-                        twitter_sentiment['confidence'] = 0.5  # Reduced confidence for basic tier
+                        twitter_sentiment['confidence'] = 0.5  # Reduced confidence for v1.1 API
                         sources.append(twitter_sentiment)
                         successful_sources.append('Twitter')
                         weight = twitter_sentiment['confidence']
@@ -173,7 +175,11 @@ class SentimentAnalyzer:
                 'failed_sources': failed_sources if failed_sources else None,
                 'available_sources': available_sources,
                 'successful_sources': successful_sources,
-                'success_rate': success_rate
+                'success_rate': success_rate,
+                'status': (
+                    "All sources available and working" if not failed_sources else
+                    f"Some sources unavailable ({', '.join(failed_sources)}). Analysis continues with available sources."
+                )
             }
             
         except Exception as e:
@@ -288,24 +294,25 @@ class SentimentAnalyzer:
                 'name': 'Market Data',
                 'score': sum(metrics) / len(metrics),
                 'samples': len(metrics),
-                'confidence': 0.9
+                'confidence': 0.9  # High confidence for market data
             }
             
         except Exception as e:
             st.warning(f"Error analyzing market data: {str(e)}")
             return None
 
-    @rate_limit(calls=15, period=900)  # 15 calls per 15 minutes for basic tier
+    @rate_limit(calls=15, period=900)  # 15 calls per 15 minutes for v1.1 API
     def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from Twitter using v1.1 API."""
         if not self.twitter_client:
             return None
+            
         try:
             search_query = f"#{keyword.lower()} OR ${keyword.upper()} -filter:retweets"
             tweets = self.twitter_client.search_tweets(
                 q=search_query,
                 lang="en",
-                count=10,  # Reduced count for basic tier
+                count=10,  # Limited count for v1.1 API
                 tweet_mode="extended"
             )
             
@@ -323,8 +330,8 @@ class SentimentAnalyzer:
             return {
                 'name': 'Twitter',
                 'score': sum(scores) / len(scores),
-                'samples': len(tweets),
-                'confidence': 0.5  # Reduced confidence due to limited data
+                'samples': len(scores),
+                'confidence': 0.5  # Reduced confidence for v1.1 API
             }
             
         except Exception as e:
@@ -346,7 +353,11 @@ class SentimentAnalyzer:
             'available_sources': available_sources,
             'successful_sources': successful_sources,
             'success_rate': success_rate,
-            'status': 'Some data sources temporarily unavailable. Please try again in a few minutes.'
+            'status': (
+                'All data sources temporarily unavailable. ' +
+                'Please try again in a few minutes. ' +
+                f'Success rate: {success_rate:.1f}%'
+            )
         }
 
     def _categorize_sentiment(self, score: float) -> str:
