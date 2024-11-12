@@ -229,3 +229,15 @@ To fix this error, please pass a unique `key` argument to the `radio` element.
 2024-11-12 21:33:04,626 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
 2024-11-12 21:35:16,257 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 21:35:21,646 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:35:41,085 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:43:18,852 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:44:27,192 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:44:28,229 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:44:44,336 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:44:50,124 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:44:57,706 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:45:00,207 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:45:01,941 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:48:06,392 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:48:06,429 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:48:08,059 - utils.altcoin_analyzer - INFO - Successfully connected to kraken

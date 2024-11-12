@@ -133,7 +133,7 @@ def main():
             logger.error(f"Error in sentiment analysis: {str(e)}")
             st.error("Error in sentiment analysis. Some data sources might be temporarily unavailable.")
         
-        # Backtesting section
+        # Backtesting section with improved error handling
         st.markdown("---")  # Visual separator
         try:
             render_backtesting_section()

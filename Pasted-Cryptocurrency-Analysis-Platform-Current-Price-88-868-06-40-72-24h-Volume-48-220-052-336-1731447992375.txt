@@ -1,0 +1,115 @@
+Cryptocurrency Analysis Platform
+Current Price
+
+$88,868.06
+40.72%
+24h Volume
+
+$48,220,052,336
+Volatility
+
+0.53%
+Strategy Builder
+Strategy Input Method
+
+
+Natural Language
+
+
+Template
+
+
+Manual Builder
+
+Strategy Description
+Describe your trading strategy in plain English. Include:
+
+Entry conditions
+Exit conditions
+Position size
+Risk management (stop loss, take profit)
+Strategy Description
+
+Price Analysis
+📈 Price Predictions
+This section shows price predictions using multiple models:
+
+Simple Moving Average (SMA) based prediction
+Exponential Moving Average (EMA) based prediction
+Momentum-based prediction
+Note: These predictions are for educational purposes only and should not be used as financial advice.
+
+Forecast Days
+
+1
+30
+Select Models
+
+SMA
+EMA
+Bitcoin Dominance Trend
+🔄 Altcoin Analysis & Strategy
+
+Market Overview
+
+
+Historical Analysis
+
+
+Correlation Analysis
+
+
+Strategy Builder
+
+Market Overview
+Market Metrics by Category
+Top Movers
+Top Gainers (24h)
+
+Top Volume
+
+Social Media & News Sentiment Analysis
+Sentiment analysis combines data from multiple sources including social media, news feeds, and market data. The analysis provides real-time insights into market sentiment across different platforms.
+
+Sentiment analysis combines data from multiple sources including RSS feeds, price movements, and social media. Hover over the metrics to see more details about confidence scores and data sources.
+
+BITCOIN
+Overall Confidence: 80.0%
+Total Samples: 39
+Sentiment Category: Bullish
+
+Data Sources
+RSS Feeds
+Score: +50.9%
+Samples: 39
+Confidence: 80.0%
+🕒 Last updated: 2024-11-12 21:44:01 UTC
+
+🔄 Strategy Backtesting
+
+Strategy Builder
+
+
+Backtest Results
+
+Strategy Builder
+Strategy Input Method
+
+
+Natural Language
+
+
+Template
+
+
+Manual Builder
+
+Strategy Description
+Describe your trading strategy in plain English. Include:
+
+Entry conditions
+Exit conditions
+Position size
+Risk management (stop loss, take profit)
+Strategy Description
+

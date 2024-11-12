@@ -8,12 +8,19 @@ from datetime import datetime
 
 def render_backtesting_section():
     """Render the backtesting interface with separate tabs for builder and results."""
-    st.subheader("🔄 Strategy Backtesting")
+    st.subheader("🔄 Strategy Development & Testing")
+    
+    st.markdown("""
+    Welcome to the strategy development and testing section. Here you can:
+    1. Build and configure your trading strategy
+    2. Test your strategy against historical data
+    3. Analyze performance metrics and results
+    """)
     
     # Create tabs for strategy building and backtesting
     strategy_tab, backtest_tab = st.tabs([
-        "Strategy Builder",
-        "Backtest Results"
+        "Build Strategy",
+        "Test Strategy"
     ])
     
     with strategy_tab:
@@ -25,14 +32,14 @@ def render_backtesting_section():
             st.session_state['current_strategy'] = strategy_config
             st.session_state['current_backtest'] = backtest_config
             
-            if st.button("▶️ Run Backtest", key=f"run_backtest_{datetime.now().timestamp()}"):
+            if st.button("▶️ Run Strategy Test", key=f"run_backtest_{datetime.now().timestamp()}"):
                 _run_backtest(strategy_config, backtest_config)
     
     with backtest_tab:
         if 'backtest_results' in st.session_state:
             _display_backtest_results(st.session_state['backtest_results'])
         else:
-            st.info("Run a backtest to see results here")
+            st.info("Create a strategy and run a test to see results here")
 
 def _validate_backtest_params(strategy_config: dict, backtest_config: dict) -> bool:
     """Validate backtest parameters before execution."""

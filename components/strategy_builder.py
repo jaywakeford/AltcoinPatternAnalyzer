@@ -23,12 +23,21 @@ class StrategyBuilder:
         """Render strategy builder interface and return both strategy and backtesting configs."""
         timestamp = datetime.now().timestamp()
         
-        st.markdown("### Strategy Builder")
+        st.markdown("""
+        ### 📊 Strategy Builder
+        Design your trading strategy using one of the following methods:
+        - **Natural Language**: Describe your strategy in plain English
+        - **Template**: Start with a pre-built strategy template
+        - **Manual Builder**: Build your strategy step by step
+        
+        Your strategy will be automatically prepared for backtesting once configured.
+        """)
         
         input_method = st.radio(
             "Strategy Input Method",
             ["Natural Language", "Template", "Manual Builder"],
-            key=f"strategy_input_method_{timestamp}"
+            key=f"strategy_input_method_{timestamp}",
+            help="Choose how you want to create your strategy"
         )
         
         strategy_config = None
@@ -40,6 +49,7 @@ class StrategyBuilder:
             strategy_config = self._render_manual_builder(timestamp)
         
         if strategy_config:
+            st.success("Strategy configured successfully! Now let's set up the testing parameters.")
             backtest_config = self._render_backtest_config(timestamp)
             if backtest_config:
                 return strategy_config, backtest_config
