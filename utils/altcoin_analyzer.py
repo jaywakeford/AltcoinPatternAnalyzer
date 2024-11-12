@@ -134,7 +134,15 @@ class AltcoinAnalyzer:
             elif not row['cooling'] and cooling:
                 cooling = False
                 if start_idx is not None:
-                    duration = (idx - start_idx).total_seconds() / (24 * 3600)  # Convert to days
+                    # Convert timestamps to datetime if they aren't already
+                    if isinstance(idx, (int, float)):
+                        end_time = pd.Timestamp(idx)
+                        start_time = pd.Timestamp(start_idx)
+                    else:
+                        end_time = idx
+                        start_time = start_idx
+                    
+                    duration = (end_time - start_time).total_seconds() / (24 * 3600)  # Convert to days
                     cooling_periods.append({
                         'start': start_idx,
                         'end': idx,
@@ -305,7 +313,6 @@ class AltcoinAnalyzer:
         except Exception as e:
             logger.error(f"Error calculating sequence metrics: {str(e)}")
             return metrics
-
     
     def _calculate_alt_performance(self, cooling_periods: List[Dict]) -> Dict:
         """Calculate alt performance during BTC cooling periods."""
@@ -383,26 +390,32 @@ class AltcoinAnalyzer:
                         'initial': coin['price'],
                         'dca_levels': [
                             coin['price'] * (1 - level/100)
-                            for level in [5, 10, 15, 20]
+                            for level in [5, 10, 15]  # DCA at 5%, 10%, and 15% drops
                         ]
                     }
                     
+                    # Set exit strategy
                     strategy['exit_points'][coin['symbol']] = {
                         'take_profit_levels': [
                             coin['price'] * (1 + level/100)
-                            for level in [20, 35, 50, 75]
+                            for level in [10, 20, 30]  # Take profits at 10%, 20%, and 30% gains
                         ],
                         'stop_loss': coin['price'] * 0.85  # 15% stop loss
                     }
                     
                     # Calculate risk metrics
+                    volatility = df[df['symbol'] == coin['symbol']]['change_24h'].std()
+                    momentum = df[df['symbol'] == coin['symbol']]['momentum'].iloc[0]
+                    volume_factor = df[df['symbol'] == coin['symbol']]['volume_24h'].iloc[0] / df['volume_24h'].mean()
+                    
                     strategy['risk_metrics'][coin['symbol']] = {
-                        'volatility': coin.get('change_24h', 0),
-                        'volume_factor': coin['volume_24h'] / coin['market_cap'],
-                        'momentum_score': coin.get('momentum', 0)
+                        'volatility': volatility,
+                        'momentum_score': momentum,
+                        'volume_factor': volume_factor
                     }
             
             return strategy
+            
         except Exception as e:
-            st.error(f"Error calculating stair-stepping strategy: {str(e)}")
+            st.error(f"Error calculating strategy: {str(e)}")
             return {}
