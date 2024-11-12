@@ -1,0 +1,27 @@
+ValueError: numpy.dtype size changed, may indicate binary incompatibility. Expected 96 from C header, got 88 from PyObject
+Traceback:
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 88, in exec_func_with_error_handling
+    result = func()
+             ^^^^^^
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 579, in code_to_exec
+    exec(code, module.__dict__)
+File "/home/runner/AltcoinPatternAnalyzer/app.py", line 17, in <module>
+    from components.backtesting import render_backtesting_section
+File "/home/runner/AltcoinPatternAnalyzer/components/backtesting.py", line 6, in <module>
+    from components.strategy_builder import StrategyBuilder
+File "/home/runner/AltcoinPatternAnalyzer/components/strategy_builder.py", line 6, in <module>
+    import spacy
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/spacy/__init__.py", line 6, in <module>
+    from .errors import setup_default_warnings
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/spacy/errors.py", line 3, in <module>
+    from .compat import Literal
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/spacy/compat.py", line 39, in <module>
+    from thinc.api import Optimizer  # noqa: F401
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/thinc/api.py", line 1, in <module>
+    from .backends import (
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/thinc/backends/__init__.py", line 17, in <module>
+    from .cupy_ops import CupyOps
+File "/home/runner/AltcoinPatternAnalyzer/.pythonlibs/lib/python3.11/site-packages/thinc/backends/cupy_ops.py", line 16, in <module>
+    from .numpy_ops import NumpyOps
+File "thinc/backends/numpy_ops.pyx", line 1, in init thinc.backends.numpy_ops
