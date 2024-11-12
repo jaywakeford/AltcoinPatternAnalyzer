@@ -11,9 +11,9 @@ from components.sidebar import render_sidebar
 from components.charts import render_price_charts, render_dominance_chart
 from components.metrics import render_market_metrics
 from components.sentiment import render_sentiment_analysis
+from components.backtesting import render_backtesting_section
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
-import plotly.io as pio
 
 def main():
     # Apply custom theme
@@ -60,6 +60,13 @@ def main():
     except Exception as e:
         st.error(f"Error rendering dominance chart: {str(e)}")
     
+    # Backtesting section
+    try:
+        render_backtesting_section()
+    except Exception as e:
+        st.error(f"Error in backtesting module: {str(e)}")
+        st.info("Please check your strategy parameters and try again.")
+
     # Phase Analysis
     st.subheader("Market Phase Analysis")
     phase_col1, phase_col2 = st.columns(2)
