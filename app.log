@@ -174,3 +174,37 @@ To fix this error, please pass a unique `key` argument to the `radio` element.
 2024-11-12 21:07:12,586 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 21:07:48,398 - utils.altcoin_analyzer - ERROR - Error in BTC correlation analysis: 'int' object has no attribute 'total_seconds'
 2024-11-12 21:08:01,038 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:11:57,547 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:11:57,600 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:12:46,888 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:12:46,892 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:14:42,544 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:14:50,541 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:15:30,725 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:16:08,866 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:11,374 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:15,641 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:23,434 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:38,459 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:45,639 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:16:47,959 - __main__ - INFO - New strategy created
+2024-11-12 21:16:48,363 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:17:14,114 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:17:18,007 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:17:28,131 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:17:33,072 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:18:02,327 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:18:12,570 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:18:17,939 - __main__ - INFO - New strategy created
+2024-11-12 21:18:18,155 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:19:01,145 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:19:10,415 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:19:14,334 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:19:37,199 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:19:38,876 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:20:19,164 - __main__ - ERROR - Error in backtesting module: There are multiple elements with the same `key='strategy_input_method'`. To fix this, please make sure that the `key` argument is unique for each element you create.
+2024-11-12 21:22:57,501 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:23:27,439 - utils.altcoin_analyzer - ERROR - Error in historical sequence analysis: kraken GET https://api.kraken.com/0/public/OHLC?pair=XTZUSDT&interval=1440
+2024-11-12 21:26:36,717 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:26:50,029 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 21:27:27,077 - utils.altcoin_analyzer - INFO - Successfully connected to kraken

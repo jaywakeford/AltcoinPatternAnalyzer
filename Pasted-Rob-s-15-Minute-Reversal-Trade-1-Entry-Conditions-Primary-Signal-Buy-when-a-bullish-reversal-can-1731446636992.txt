@@ -1,0 +1,143 @@
+Rob's 15-Minute Reversal Trade
+
+1. Entry Conditions
+Primary Signal:
+
+Buy when a bullish reversal candlestick pattern (e.g., Hammer, Bullish Engulfing) forms on the 15-minute chart following a clear downtrend. This candle should ideally show a long lower wick, indicating rejection of lower prices.
+Math for Primary Signal:
+
+Calculate the candle wick ratio:
+Lower Wick Ratio
+=
+Low - Open
+Close - Open
+Lower Wick Ratio= 
+Close - Open
+Low - Open
+​
+ 
+For a reversal pattern, set a threshold where the Lower Wick Ratio is greater than or equal to 1.5.
+Confirmation Signals:
+
+RSI Confirmation: RSI should be below 30 at the close of the reversal candle, indicating oversold conditions.
+Calculate RSI for the last 14 periods:
+RSI
+=
+100
+−
+(
+100
+1
++
+Average Gain
+Average Loss
+)
+RSI=100−( 
+1+ 
+Average Loss
+Average Gain
+​
+ 
+100
+​
+ )
+Volume Confirmation: Volume should be above the 15-minute average volume for added strength in the reversal.
+Calculate the 15-minute average volume over the last 20 bars:
+Average Volume
+=
+∑
+Volume of last 20 bars
+20
+Average Volume= 
+20
+∑Volume of last 20 bars
+​
+ 
+Set a threshold: Volume of the current bar should be at least 1.2 times the Average Volume.
+2. Exit Conditions
+Primary Exit:
+
+Sell when the price reaches the nearest resistance level or a key moving average (e.g., 50-period MA on the 15-minute chart).
+Math for Primary Exit:
+
+Calculate the 50-period moving average:
+50-period SMA
+=
+∑
+Close of last 50 bars
+50
+50-period SMA= 
+50
+∑Close of last 50 bars
+​
+ 
+Exit when the close price is within 0.5% of the 50-period SMA or resistance level.
+Safety Exits:
+
+RSI Exit: Exit if RSI goes above 70, indicating overbought conditions.
+Bearish Reversal Exit: Exit if a bearish reversal pattern (e.g., Shooting Star, Bearish Engulfing) forms.
+Bearish Reversal Formula: Apply similar wick ratio as the entry but for upper wicks:
+Upper Wick Ratio
+=
+High - Close
+Close - Open
+≥
+1.5
+Upper Wick Ratio= 
+Close - Open
+High - Close
+​
+ ≥1.5
+3. Position Size
+Fixed Position Size: Use 10% of the available capital for each trade. This keeps position size consistent and manageable.
+4. Risk Management
+Stop Loss:
+
+Set an initial stop loss at 1% below the entry price.
+Math for Stop Loss Level:
+Stop Loss
+=
+Entry Price
+×
+(
+1
+−
+0.01
+)
+Stop Loss=Entry Price×(1−0.01)
+Take Profit:
+
+Target a take profit level of 2-3% above the entry price.
+Math for Take Profit Level: \text{Take Profit} = \text{Entry Price} \times (1 + \text{Target %})
+Where Target % is typically 0.02 or 0.03.
+Trailing Stop: Optional trailing stop of 0.5% once the trade is up by 1%.
+
+Math for Trailing Stop Level:
+Set the trailing stop to move up with price as long as the price is above 1% from entry:
+Trailing Stop
+=
+Current Price
+×
+(
+1
+−
+0.005
+)
+Trailing Stop=Current Price×(1−0.005)
+5. Timeframe
+15-Minute Timeframe: This strategy is designed specifically for intraday reversals and is best applied on a 15-minute timeframe.
+6. Additional Indicators
+Volume Requirements: Confirm that the current volume is at least 1.2 times the 20-bar average volume to validate the strength of the reversal pattern.
+7. Market Phase Filters
+Trade Only During High Volatility Periods: This strategy works best during volatile market conditions where price movement is more pronounced. Define market volatility based on the Average True Range (ATR) over the last 15 periods:
+ATR
+=
+∑
+(True Range of last 15 bars)
+15
+ATR= 
+15
+∑(True Range of last 15 bars)
+​
+ 
+Set a threshold: Only enter trades if the ATR is above a certain value relative to the asset's price (e.g., ATR > 1% of the current price).
