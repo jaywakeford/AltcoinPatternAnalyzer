@@ -39,15 +39,12 @@ def _validate_backtest_params(strategy_config: dict, backtest_config: dict) -> b
     """Validate backtest parameters before execution."""
     errors = []
     
-    # Validate strategy parameters
     if not strategy_config.get('entry_conditions'):
         errors.append("Strategy must have at least one entry condition")
     if not strategy_config.get('exit_conditions'):
         errors.append("Strategy must have at least one exit condition")
     if not strategy_config.get('position_size'):
         errors.append("Position size must be specified")
-    
-    # Validate backtest parameters
     if not backtest_config.get('asset'):
         errors.append("Trading asset must be selected")
     if not backtest_config.get('initial_capital'):
@@ -55,7 +52,6 @@ def _validate_backtest_params(strategy_config: dict, backtest_config: dict) -> b
     if backtest_config.get('initial_capital', 0) <= 0:
         errors.append("Initial capital must be positive")
     
-    # Display errors if any
     if errors:
         for error in errors:
             st.error(error)

@@ -4,24 +4,26 @@ enableCORS = true
 address = "0.0.0.0"
 port = 5000
 
+[ui]
+hideTopBar = true
+hideSidebarNav = true
+
 [theme]
+base = "dark"
 primaryColor = "#FF4B4B"
 backgroundColor = "#0E1117"
 secondaryBackgroundColor = "#262730"
 textColor = "#FAFAFA"
 font = "sans serif"
 
-[logger]
-level = "info"
+[client]
+toolbarMode = "minimal"
+showErrorDetails = true
 
 [browser]
 serverAddress = "0.0.0.0"
 serverPort = 5000
 gatherUsageStats = false
-
-[client]
-toolbarMode = "minimal"
-showErrorDetails = true
 
 [runner]
 magicEnabled = true
