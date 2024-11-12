@@ -15,6 +15,7 @@ from components.charts import render_price_charts, render_dominance_chart
 from components.metrics import render_market_metrics
 from components.sentiment import render_sentiment_analysis
 from components.backtesting import render_backtesting_section
+from components.predictions import render_prediction_section
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
 from dotenv import load_dotenv
@@ -63,6 +64,9 @@ def main():
                 st.subheader("Price Analysis")
                 render_price_charts(df, selected_indicators)
                 
+                # Add prediction section here
+                render_prediction_section(df)
+                
                 st.subheader("Bitcoin Dominance Trend")
                 render_dominance_chart(timeframe)
             except Exception as e:
@@ -86,7 +90,7 @@ def main():
             Try refreshing in a few minutes if the issue persists.
             """)
         
-        # Backtesting section - moved before Market Phase Analysis
+        # Backtesting section
         st.markdown("---")  # Visual separator
         try:
             render_backtesting_section()
