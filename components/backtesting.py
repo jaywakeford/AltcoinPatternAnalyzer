@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from utils.backtesting import Backtester
 from utils.data_fetcher import get_crypto_data
+from components.strategy_builder import StrategyBuilder
 
 def render_backtesting_section():
     """Render the backtesting interface and results."""
@@ -10,10 +11,24 @@ def render_backtesting_section():
     
     # Add description
     st.markdown("""
-    Test your trading strategies using historical cryptocurrency data. Configure your strategy parameters below:
+    Test your trading strategies using historical cryptocurrency data. You can either:
+    1. Use pre-built strategies with configurable parameters
+    2. Create a custom strategy using the strategy builder
     """)
     
-    # Strategy Configuration
+    # Strategy Selection
+    strategy_mode = st.radio(
+        "Strategy Mode",
+        ["Pre-built Strategies", "Custom Strategy Builder"]
+    )
+    
+    if strategy_mode == "Pre-built Strategies":
+        _render_prebuilt_strategy_section()
+    else:
+        _render_custom_strategy_section()
+
+def _render_prebuilt_strategy_section():
+    """Render the pre-built strategy configuration section."""
     with st.expander("Strategy Configuration", expanded=True):
         col1, col2 = st.columns(2)
         
@@ -48,18 +63,35 @@ def render_backtesting_section():
         # Strategy-specific parameters
         st.markdown("### Strategy Parameters")
         strategy_config = _get_strategy_parameters(strategy_type)
+        
+        if st.button("Run Backtest"):
+            _run_prebuilt_strategy_backtest(selected_coin, timeframe, strategy_config, initial_capital)
+
+def _render_custom_strategy_section():
+    """Render the custom strategy builder section."""
+    strategy_builder = StrategyBuilder()
+    strategy_config = strategy_builder.render()
     
-    # Run backtest button
-    if st.button("Run Backtest"):
-        with st.spinner("Running backtest..."):
-            try:
-                results = _run_backtest(selected_coin, timeframe, strategy_config, initial_capital)
-                if results:
-                    _display_results(results)
-                else:
-                    st.error("No results generated. Please check your parameters.")
-            except Exception as e:
-                st.error(f"Error during backtesting: {str(e)}")
+    if strategy_config:
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_coin = st.selectbox(
+                "Asset",
+                ["bitcoin", "ethereum", "cardano", "solana"],
+                help="Select cryptocurrency to test"
+            )
+        
+        with col2:
+            initial_capital = st.number_input(
+                "Initial Capital (USD)",
+                min_value=1000,
+                value=10000,
+                step=1000,
+                help="Starting capital for backtesting"
+            )
+        
+        if st.button("Run Backtest"):
+            _run_custom_strategy_backtest(selected_coin, strategy_config, initial_capital)
 
 def _get_strategy_parameters(strategy_type: str) -> dict:
     """Get strategy-specific parameters based on the selected strategy type."""
@@ -114,17 +146,35 @@ def _get_strategy_parameters(strategy_type: str) -> dict:
     
     return config
 
-def _run_backtest(coin: str, timeframe: str, config: dict, initial_capital: float):
-    """Execute backtest with the specified parameters."""
-    # Fetch historical data
-    df = get_crypto_data(coin, timeframe)
-    if df.empty:
-        st.error("Failed to fetch historical data")
-        return None
-    
-    # Initialize and run backtester
-    backtester = Backtester(df, initial_capital)
-    return backtester.run_strategy(config)
+def _run_prebuilt_strategy_backtest(coin: str, timeframe: str, config: dict, initial_capital: float):
+    """Execute backtest with pre-built strategy parameters."""
+    _execute_backtest(coin, timeframe, config, initial_capital)
+
+def _run_custom_strategy_backtest(coin: str, strategy_config: dict, initial_capital: float):
+    """Execute backtest with custom strategy parameters."""
+    timeframe = strategy_config['timeframe']
+    _execute_backtest(coin, timeframe, strategy_config, initial_capital)
+
+def _execute_backtest(coin: str, timeframe: str, config: dict, initial_capital: float):
+    """Execute backtest and display results."""
+    with st.spinner("Running backtest..."):
+        try:
+            # Fetch historical data
+            df = get_crypto_data(coin, timeframe)
+            if df.empty:
+                st.error("Failed to fetch historical data")
+                return
+            
+            # Initialize and run backtester
+            backtester = Backtester(df, initial_capital)
+            results = backtester.run_strategy(config)
+            
+            if results:
+                _display_results(results)
+            else:
+                st.error("No results generated. Please check your parameters.")
+        except Exception as e:
+            st.error(f"Error during backtesting: {str(e)}")
 
 def _display_results(results):
     """Display backtest results with visualizations."""
