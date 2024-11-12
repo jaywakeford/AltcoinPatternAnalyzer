@@ -43,55 +43,42 @@ class SentimentAnalyzer:
         except LookupError:
             nltk.download('punkt', quiet=True)
         
-        # RSS feeds for major crypto news sites
+        # Extended list of RSS feeds for crypto news
         self.rss_feeds = [
             "https://cointelegraph.com/rss",
             "https://www.newsbtc.com/feed/",
             "https://bitcoinmagazine.com/.rss/full/",
             "https://cryptopotato.com/feed/",
-            "https://cryptonews.com/news/feed/"
+            "https://cryptonews.com/news/feed/",
+            "https://decrypt.co/feed",
+            "https://blog.coinbase.com/feed",
+            "https://coinjournal.net/feed/",
+            "https://www.coindesk.com/arc/outboundfeeds/rss/",
+            "https://beincrypto.com/feed/"
         ]
         
         # Initialize Twitter client
         self.twitter_client = None
         self._init_twitter_client()
     
-    def _init_twitter_client(self) -> None:
+    def _init_twitter_client(self):
         """Initialize Twitter API client with proper error handling."""
         try:
-            api_key = os.getenv('TWITTER_API_KEY')
-            api_secret = os.getenv('TWITTER_API_SECRET')
-            access_token = os.getenv('TWITTER_ACCESS_TOKEN')
-            access_token_secret = os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
-
-            if not all([api_key, api_secret, access_token, access_token_secret]):
-                st.warning("Missing Twitter API credentials")
-                return
-
-            auth = tweepy.OAuth1UserHandler(
-                api_key,
-                api_secret,
-                access_token,
-                access_token_secret
+            auth = tweepy.OAuthHandler(
+                os.getenv('TWITTER_API_KEY'),
+                os.getenv('TWITTER_API_SECRET')
             )
-            
-            # Initialize API v1.1 client
-            self.twitter_client = tweepy.API(
-                auth,
-                wait_on_rate_limit=True,
-                retry_count=3,
-                retry_delay=5
+            auth.set_access_token(
+                os.getenv('TWITTER_ACCESS_TOKEN'),
+                os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
             )
-            
-            # Verify credentials
-            self.twitter_client.verify_credentials()
-            
+            self.twitter_client = tweepy.API(auth, wait_on_rate_limit=True)
         except Exception as e:
             st.warning(f"Twitter client initialization error: {str(e)}")
             self.twitter_client = None
 
     @st.cache_data(ttl=300)  # Cache for 5 minutes
-    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:
+    def get_crypto_news_sentiment(self, keyword: str) -> Dict:
         """Get aggregated sentiment from multiple sources."""
         try:
             # Collect sentiment from different sources
@@ -101,10 +88,11 @@ class SentimentAnalyzer:
             weighted_sentiment = 0
             total_samples = 0
             
-            # Try RSS feeds
+            # Try RSS feeds with increased weight
             try:
-                rss_sentiment = _self._analyze_rss_feeds(keyword)
+                rss_sentiment = self._analyze_rss_feeds(keyword)
                 if rss_sentiment:
+                    rss_sentiment['confidence'] = 0.8  # Increased weight for RSS feeds
                     sources.append(rss_sentiment)
                     weight = rss_sentiment['confidence']
                     total_confidence += weight
@@ -114,10 +102,11 @@ class SentimentAnalyzer:
                 failed_sources.append("RSS Feeds")
                 st.warning(f"Error analyzing RSS feeds: {str(e)}")
             
-            # Try market data
+            # Try market data with increased weight
             try:
-                market_sentiment = _self._analyze_market_data(keyword)
+                market_sentiment = self._analyze_market_data(keyword)
                 if market_sentiment:
+                    market_sentiment['confidence'] = 0.9  # Increased weight for market data
                     sources.append(market_sentiment)
                     weight = market_sentiment['confidence']
                     total_confidence += weight
@@ -127,10 +116,10 @@ class SentimentAnalyzer:
                 failed_sources.append("Market Data")
                 st.warning(f"Error analyzing market data: {str(e)}")
             
-            # Try Twitter if available
-            if _self.twitter_client:
+            # Try Twitter with reduced weight
+            if self.twitter_client:
                 try:
-                    twitter_sentiment = _self._analyze_twitter_sentiment(keyword)
+                    twitter_sentiment = self._analyze_twitter_sentiment(keyword)
                     if twitter_sentiment:
                         sources.append(twitter_sentiment)
                         weight = twitter_sentiment['confidence']
@@ -142,7 +131,7 @@ class SentimentAnalyzer:
                     st.warning(f"Error analyzing Twitter data: {str(e)}")
             
             if not sources:
-                return _self._create_error_response("No sentiment data available from any source")
+                return self._create_error_response("No sentiment data available from any source")
             
             # Calculate final sentiment
             final_sentiment = weighted_sentiment / total_confidence if total_confidence > 0 else 0
@@ -151,21 +140,21 @@ class SentimentAnalyzer:
                 'score': final_sentiment * 100,  # Scale to -100 to 100
                 'samples': total_samples,
                 'timestamp': datetime.now().isoformat(),
-                'sentiment_category': _self._categorize_sentiment(final_sentiment * 100),
+                'sentiment_category': self._categorize_sentiment(final_sentiment * 100),
                 'confidence': min(1.0, total_confidence / len(sources)),
                 'sources': sources,
                 'failed_sources': failed_sources if failed_sources else None
             }
             
         except Exception as e:
-            return _self._create_error_response(str(e))
+            return self._create_error_response(str(e))
 
-    def _analyze_rss_feeds(_self, keyword: str) -> Optional[Dict]:
+    def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from RSS feeds."""
         scores = []
         successful_feeds = 0
         
-        for feed_url in _self.rss_feeds:
+        for feed_url in self.rss_feeds:
             try:
                 feed = feedparser.parse(feed_url)
                 if not feed.entries:
@@ -180,7 +169,7 @@ class SentimentAnalyzer:
                 if relevant_entries:
                     for entry in relevant_entries:
                         text = f"{entry.title} {getattr(entry, 'summary', '')}"
-                        sentiment = _self.vader.polarity_scores(text)
+                        sentiment = self.vader.polarity_scores(text)
                         scores.append(sentiment['compound'])
                     successful_feeds += 1
                     
@@ -195,10 +184,10 @@ class SentimentAnalyzer:
             'name': 'RSS Feeds',
             'score': sum(scores) / len(scores),
             'samples': len(scores),
-            'confidence': min(1.0, successful_feeds / len(_self.rss_feeds))
+            'confidence': min(1.0, successful_feeds / len(self.rss_feeds))
         }
 
-    def _analyze_market_data(_self, keyword: str) -> Optional[Dict]:
+    def _analyze_market_data(self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from market data."""
         try:
             symbol = keyword.upper()
@@ -235,26 +224,25 @@ class SentimentAnalyzer:
                 'name': 'Market Data',
                 'score': sum(normalized_scores) / len(normalized_scores),
                 'samples': len(normalized_scores),
-                'confidence': 0.8
+                'confidence': 0.9  # Increased confidence for market data
             }
             
         except Exception as e:
             st.warning(f"Error analyzing market data: {str(e)}")
             return None
 
-    @rate_limit(calls=180, period=900)  # 180 calls per 15 minutes
-    def _analyze_twitter_sentiment(_self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from Twitter."""
-        if not _self.twitter_client:
+    @rate_limit(calls=15, period=900)  # 15 calls per 15 minutes for basic tier
+    def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
+        """Analyze sentiment from Twitter using v1.1 API."""
+        if not self.twitter_client:
             return None
-
         try:
-            # Search for tweets about the cryptocurrency
-            search_query = f"(#{keyword.lower()} OR ${keyword.upper()}) -is:retweet lang:en"
-            tweets = _self.twitter_client.search_tweets(
+            search_query = f"#{keyword.lower()} OR ${keyword.upper()} -filter:retweets"
+            tweets = self.twitter_client.search_tweets(
                 q=search_query,
-                count=100,
-                tweet_mode='extended'
+                lang="en",
+                count=10,  # Reduced count for basic tier
+                tweet_mode="extended"
             )
             
             if not tweets:
@@ -262,11 +250,8 @@ class SentimentAnalyzer:
             
             scores = []
             for tweet in tweets:
-                # Weight sentiment by engagement metrics
-                engagement = tweet.favorite_count + tweet.retweet_count
-                sentiment = _self.vader.polarity_scores(tweet.full_text)
-                weight = max(1, min(5, engagement / 10))  # Cap weight at 5
-                scores.extend([sentiment['compound']] * int(weight))
+                sentiment = self.vader.polarity_scores(tweet.full_text)
+                scores.append(sentiment['compound'])
             
             if not scores:
                 return None
@@ -275,14 +260,14 @@ class SentimentAnalyzer:
                 'name': 'Twitter',
                 'score': sum(scores) / len(scores),
                 'samples': len(tweets),
-                'confidence': min(1.0, len(tweets) / 100)
+                'confidence': 0.5  # Reduced confidence due to limited data
             }
             
         except Exception as e:
             st.warning(f"Error analyzing Twitter data: {str(e)}")
             return None
 
-    def _create_error_response(_self, error_message: str) -> Dict:
+    def _create_error_response(self, error_message: str) -> Dict:
         """Create a standardized error response."""
         return {
             'score': 0,
@@ -294,7 +279,7 @@ class SentimentAnalyzer:
             'sources': []
         }
 
-    def _categorize_sentiment(_self, score: float) -> str:
+    def _categorize_sentiment(self, score: float) -> str:
         """Categorize sentiment score into categories."""
         if score >= 25:
             return 'bullish'
