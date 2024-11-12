@@ -7,27 +7,27 @@ from datetime import datetime, timedelta
 import time
 import random
 
-# Cryptocurrency symbol mapping
+# Cryptocurrency symbol mapping with lowercase symbols
 CRYPTO_SYMBOLS = {
-    'bitcoin': 'BTC/USDT',
-    'ethereum': 'ETH/USDT',
-    'cardano': 'ADA/USDT',
-    'binancecoin': 'BNB/USDT',
-    'solana': 'SOL/USDT'
+    'bitcoin': 'btc/usdt',
+    'ethereum': 'eth/usdt',
+    'cardano': 'ada/usdt',
+    'binancecoin': 'bnb/usdt',
+    'solana': 'sol/usdt'
 }
 
 # Initialize APIs
 cg = CoinGeckoAPI()
 
 def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
-    """Convert base symbol to exchange-specific format."""
+    """Convert base symbol to exchange-specific format with error handling."""
     try:
         if not base_symbol:
             raise ValueError("Invalid base symbol")
         
         if exchange_id == 'kucoin':
             return base_symbol.replace('/', '-')
-        return base_symbol
+        return base_symbol.upper()  # Most exchanges prefer uppercase symbols
     except Exception as e:
         st.warning(f"Symbol conversion error: {str(e)}")
         return base_symbol
@@ -35,15 +35,12 @@ def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
 def init_exchanges() -> List[ccxt.Exchange]:
     """Initialize multiple cryptocurrency exchanges with error handling."""
     exchanges = []
-    exchange_ids = ['kraken', 'kucoin', 'coinbasepro']
+    exchange_ids = ['kraken', 'coinbasepro', 'kucoin']
     
     for exchange_id in exchange_ids:
         try:
-            exchange_class = getattr(ccxt, exchange_id)
-            exchange = exchange_class({
-                'enableRateLimit': True,
-                'timeout': 30000
-            })
+            exchange = getattr(ccxt, exchange_id)()
+            exchange.load_markets()  # Load market symbols
             exchanges.append(exchange)
         except Exception as e:
             st.warning(f"Failed to initialize {exchange_id}: {str(e)}")
@@ -69,7 +66,54 @@ def retry_api_call(func, max_retries=3, delay=1):
 def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
     """Fetch cryptocurrency data using multiple exchanges with fallback."""
     try:
-        # Use CoinGecko as primary data source
+        # Get symbol from mapping with validation
+        symbol = CRYPTO_SYMBOLS.get(coin_id.lower())
+        if not symbol:
+            st.error(f"Unsupported cryptocurrency: {coin_id}")
+            return pd.DataFrame()
+
+        # Convert days to milliseconds for CCXT
+        timeframe = '1d'
+        if int(days) <= 7:
+            timeframe = '1h'
+        
+        for exchange in exchanges:
+            try:
+                # Get exchange-specific symbol format
+                exchange_symbol = get_exchange_symbol(exchange.id, symbol)
+                
+                def fetch_data():
+                    return exchange.fetch_ohlcv(
+                        exchange_symbol,
+                        timeframe,
+                        limit=int(days) * (24 if timeframe == '1h' else 1)
+                    )
+                
+                # Fetch OHLCV data with retry logic
+                ohlcv = retry_api_call(fetch_data)
+                
+                if ohlcv and len(ohlcv) > 0:
+                    # Create DataFrame
+                    df = pd.DataFrame(
+                        ohlcv,
+                        columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                    )
+                    
+                    # Convert timestamp to datetime
+                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                    df.set_index('timestamp', inplace=True)
+                    
+                    # Use close price as the main price
+                    df['price'] = df['close']
+                    
+                    return df[['price', 'volume']]
+                    
+            except Exception as e:
+                st.warning(f"Exchange {exchange.id} error: {str(e)}. Trying next exchange...")
+                continue
+        
+        # Fallback to CoinGecko
+        st.info("Using CoinGecko as fallback data source...")
         data = retry_api_call(
             lambda: cg.get_coin_market_chart_by_id(
                 id=coin_id,
@@ -88,43 +132,6 @@ def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
             df.set_index('timestamp', inplace=True)
             return df
             
-        # Fallback to exchange data if CoinGecko fails
-        symbol = CRYPTO_SYMBOLS.get(coin_id.lower())
-        if not symbol:
-            raise ValueError(f"Unsupported cryptocurrency: {coin_id}")
-
-        timeframe = '1d'
-        if int(days) <= 7:
-            timeframe = '1h'
-        
-        for exchange in exchanges:
-            try:
-                exchange_symbol = get_exchange_symbol(exchange.id, symbol)
-                
-                ohlcv = retry_api_call(
-                    lambda: exchange.fetch_ohlcv(
-                        exchange_symbol,
-                        timeframe,
-                        limit=int(days) * (24 if timeframe == '1h' else 1)
-                    )
-                )
-                
-                if ohlcv:
-                    df = pd.DataFrame(
-                        ohlcv,
-                        columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                    )
-                    
-                    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                    df.set_index('timestamp', inplace=True)
-                    df['price'] = df['close']
-                    
-                    return df[['price', 'volume']]
-                    
-            except Exception as e:
-                st.warning(f"Exchange {exchange.id} error: {str(e)}. Trying next exchange...")
-                continue
-            
     except Exception as e:
         error_msg = _handle_api_error(e)
         st.error(error_msg)
@@ -133,16 +140,30 @@ def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=300)
 def get_bitcoin_dominance(days: str) -> pd.DataFrame:
-    """Calculate Bitcoin dominance using CoinGecko global market data."""
+    """Calculate Bitcoin dominance using CoinGecko market data."""
     try:
+        # Get all coins market data
         global_data = retry_api_call(
-            lambda: cg.get_global()
+            lambda: cg.get_coins_markets(
+                vs_currency='usd',
+                order='market_cap_desc',
+                per_page=100,
+                sparkline=False
+            )
         )
-
-        if not global_data or 'market_cap_percentage' not in global_data:
-            raise Exception("Invalid market data format")
-
-        btc_dominance = global_data['market_cap_percentage']['btc']
+        
+        if not global_data:
+            raise Exception("Failed to fetch market data")
+        
+        # Calculate total market cap and Bitcoin market cap
+        total_market_cap = sum(coin['market_cap'] for coin in global_data if coin['market_cap'])
+        btc_data = next((coin for coin in global_data if coin['id'] == 'bitcoin'), None)
+        
+        if not btc_data or not total_market_cap:
+            raise Exception("Invalid market cap data")
+        
+        btc_market_cap = btc_data['market_cap']
+        dominance = (btc_market_cap / total_market_cap * 100) if total_market_cap > 0 else 0
         
         # Create time series for the last N days
         timestamps = pd.date_range(
@@ -151,9 +172,10 @@ def get_bitcoin_dominance(days: str) -> pd.DataFrame:
             freq='D'
         )
         
+        # Create DataFrame with the calculated dominance
         df = pd.DataFrame({
             'timestamp': timestamps,
-            'btc_dominance': [btc_dominance] * len(timestamps)
+            'btc_dominance': [dominance] * len(timestamps)
         })
         
         df.set_index('timestamp', inplace=True)
