@@ -6,9 +6,11 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import streamlit as st
 from datetime import datetime
 import tweepy
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Tuple
 import time
 from functools import wraps
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 
 def rate_limit(calls: int, period: int):
     """Rate limiter decorator"""
@@ -77,23 +79,33 @@ class SentimentAnalyzer:
             st.warning(f"Twitter client initialization error: {str(e)}")
             self.twitter_client = None
 
-    @st.cache_data(ttl=300)  # Cache for 5 minutes
-    def get_crypto_news_sentiment(self, keyword: str) -> Dict:
-        """Get aggregated sentiment from multiple sources."""
+    @st.cache_data(ttl=300, show_spinner=False)
+    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:
+        """Get aggregated sentiment from multiple sources with improved error handling and fallbacks."""
         try:
-            # Collect sentiment from different sources
-            sources = []
-            failed_sources = []
+            # Initialize sentiment collection
+            sources: List[Dict] = []
+            failed_sources: List[str] = []
             total_confidence = 0
             weighted_sentiment = 0
             total_samples = 0
             
-            # Try RSS feeds with increased weight
+            # Track source availability
+            available_sources = ['RSS Feeds', 'Market Data', 'Twitter']
+            successful_sources = []
+            
+            # Try RSS feeds first
             try:
-                rss_sentiment = self._analyze_rss_feeds(keyword)
+                rss_sentiment = _self._analyze_rss_feeds(keyword)
                 if rss_sentiment:
-                    rss_sentiment['confidence'] = 0.8  # Increased weight for RSS feeds
+                    # Increase RSS weight if Twitter fails
+                    if not _self.twitter_client:
+                        rss_sentiment['confidence'] = 0.9
+                    else:
+                        rss_sentiment['confidence'] = 0.8
+                    
                     sources.append(rss_sentiment)
+                    successful_sources.append('RSS Feeds')
                     weight = rss_sentiment['confidence']
                     total_confidence += weight
                     weighted_sentiment += rss_sentiment['score'] * weight
@@ -102,12 +114,18 @@ class SentimentAnalyzer:
                 failed_sources.append("RSS Feeds")
                 st.warning(f"Error analyzing RSS feeds: {str(e)}")
             
-            # Try market data with increased weight
+            # Try market data
             try:
-                market_sentiment = self._analyze_market_data(keyword)
+                market_sentiment = _self._analyze_market_data(keyword)
                 if market_sentiment:
-                    market_sentiment['confidence'] = 0.9  # Increased weight for market data
+                    # Increase market data weight if RSS feeds failed
+                    if "RSS Feeds" in failed_sources:
+                        market_sentiment['confidence'] = 1.0
+                    else:
+                        market_sentiment['confidence'] = 0.9
+                    
                     sources.append(market_sentiment)
+                    successful_sources.append('Market Data')
                     weight = market_sentiment['confidence']
                     total_confidence += weight
                     weighted_sentiment += market_sentiment['score'] * weight
@@ -117,11 +135,13 @@ class SentimentAnalyzer:
                 st.warning(f"Error analyzing market data: {str(e)}")
             
             # Try Twitter with reduced weight
-            if self.twitter_client:
+            if _self.twitter_client:
                 try:
-                    twitter_sentiment = self._analyze_twitter_sentiment(keyword)
+                    twitter_sentiment = _self._analyze_twitter_sentiment(keyword)
                     if twitter_sentiment:
+                        twitter_sentiment['confidence'] = 0.5  # Reduced confidence for basic tier
                         sources.append(twitter_sentiment)
+                        successful_sources.append('Twitter')
                         weight = twitter_sentiment['confidence']
                         total_confidence += weight
                         weighted_sentiment += twitter_sentiment['score'] * weight
@@ -131,7 +151,14 @@ class SentimentAnalyzer:
                     st.warning(f"Error analyzing Twitter data: {str(e)}")
             
             if not sources:
-                return self._create_error_response("No sentiment data available from any source")
+                return _self._create_error_response(
+                    "No sentiment data available. All data sources temporarily unavailable.",
+                    available_sources,
+                    successful_sources
+                )
+            
+            # Calculate success rate
+            success_rate = (len(successful_sources) / len(available_sources)) * 100
             
             # Calculate final sentiment
             final_sentiment = weighted_sentiment / total_confidence if total_confidence > 0 else 0
@@ -140,26 +167,41 @@ class SentimentAnalyzer:
                 'score': final_sentiment * 100,  # Scale to -100 to 100
                 'samples': total_samples,
                 'timestamp': datetime.now().isoformat(),
-                'sentiment_category': self._categorize_sentiment(final_sentiment * 100),
+                'sentiment_category': _self._categorize_sentiment(final_sentiment * 100),
                 'confidence': min(1.0, total_confidence / len(sources)),
                 'sources': sources,
-                'failed_sources': failed_sources if failed_sources else None
+                'failed_sources': failed_sources if failed_sources else None,
+                'available_sources': available_sources,
+                'successful_sources': successful_sources,
+                'success_rate': success_rate
             }
             
         except Exception as e:
-            return self._create_error_response(str(e))
+            return _self._create_error_response(
+                str(e),
+                available_sources=['RSS Feeds', 'Market Data', 'Twitter'],
+                successful_sources=[]
+            )
 
     def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from RSS feeds."""
+        """Analyze sentiment from RSS feeds with improved error handling and timeouts."""
         scores = []
         successful_feeds = 0
+        total_feeds = len(self.rss_feeds)
+        timeout = 10  # seconds
         
-        for feed_url in self.rss_feeds:
+        def process_feed(feed_url: str) -> Tuple[bool, List[float]]:
             try:
-                feed = feedparser.parse(feed_url)
-                if not feed.entries:
-                    continue
+                # Use requests with timeout for initial fetch
+                response = requests.get(feed_url, timeout=timeout)
+                response.raise_for_status()
                 
+                # Parse feed content
+                feed = feedparser.parse(response.content)
+                if not feed.entries:
+                    return False, []
+                
+                feed_scores = []
                 relevant_entries = [
                     entry for entry in feed.entries[:10]
                     if keyword.lower() in (entry.title + 
@@ -170,12 +212,33 @@ class SentimentAnalyzer:
                     for entry in relevant_entries:
                         text = f"{entry.title} {getattr(entry, 'summary', '')}"
                         sentiment = self.vader.polarity_scores(text)
-                        scores.append(sentiment['compound'])
-                    successful_feeds += 1
-                    
-            except Exception as e:
-                st.warning(f"Error processing feed {feed_url}: {str(e)}")
-                continue
+                        feed_scores.append(sentiment['compound'])
+                    return True, feed_scores
+                
+                return False, []
+                
+            except (requests.Timeout, requests.RequestException) as e:
+                st.warning(f"Timeout or error processing feed {feed_url}: {str(e)}")
+                return False, []
+        
+        # Process feeds in parallel with timeout
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_url = {
+                executor.submit(process_feed, url): url 
+                for url in self.rss_feeds
+            }
+            
+            for future in as_completed(future_to_url):
+                url = future_to_url[future]
+                try:
+                    success, feed_scores = future.result()
+                    if success:
+                        successful_feeds += 1
+                        scores.extend(feed_scores)
+                except TimeoutError:
+                    st.warning(f"Feed processing timed out for {url}")
+                except Exception as e:
+                    st.warning(f"Error processing feed {url}: {str(e)}")
         
         if not scores:
             return None
@@ -184,11 +247,11 @@ class SentimentAnalyzer:
             'name': 'RSS Feeds',
             'score': sum(scores) / len(scores),
             'samples': len(scores),
-            'confidence': min(1.0, successful_feeds / len(self.rss_feeds))
+            'confidence': min(1.0, successful_feeds / total_feeds)
         }
 
     def _analyze_market_data(self, keyword: str) -> Optional[Dict]:
-        """Analyze sentiment from market data."""
+        """Analyze sentiment from market data with improved error handling."""
         try:
             symbol = keyword.upper()
             price_data = cryptocompare.get_price(
@@ -205,26 +268,27 @@ class SentimentAnalyzer:
                 return None
                 
             # Calculate sentiment indicators
+            metrics = []
+            
+            # Price change sentiment
             price_change = float(raw_data.get('CHANGEPCT24HOUR', 0))
-            volume_change = (
-                float(raw_data.get('VOLUMEDAYTO', 0)) / 
-                float(raw_data.get('VOLUMEDAYFROM', 1)) - 1
-            )
+            metrics.append(max(min(price_change/100, 1), -1))
             
-            # Normalize scores to [-1, 1] range
-            normalized_scores = [
-                max(min(value/100, 1), -1) 
-                for value in [price_change, volume_change * 100]
-            ]
+            # Volume change sentiment
+            volume_to = float(raw_data.get('VOLUMEDAYTO', 0))
+            volume_from = float(raw_data.get('VOLUMEDAYFROM', 1))
+            if volume_from > 0:
+                volume_change = (volume_to / volume_from - 1)
+                metrics.append(max(min(volume_change, 1), -1))
             
-            if not normalized_scores:
+            if not metrics:
                 return None
                 
             return {
                 'name': 'Market Data',
-                'score': sum(normalized_scores) / len(normalized_scores),
-                'samples': len(normalized_scores),
-                'confidence': 0.9  # Increased confidence for market data
+                'score': sum(metrics) / len(metrics),
+                'samples': len(metrics),
+                'confidence': 0.9
             }
             
         except Exception as e:
@@ -267,8 +331,10 @@ class SentimentAnalyzer:
             st.warning(f"Error analyzing Twitter data: {str(e)}")
             return None
 
-    def _create_error_response(self, error_message: str) -> Dict:
-        """Create a standardized error response."""
+    def _create_error_response(self, error_message: str, available_sources: List[str], successful_sources: List[str]) -> Dict:
+        """Create a standardized error response with improved feedback."""
+        success_rate = (len(successful_sources) / len(available_sources)) * 100 if available_sources else 0
+        
         return {
             'score': 0,
             'samples': 0,
@@ -276,7 +342,11 @@ class SentimentAnalyzer:
             'sentiment_category': 'neutral',
             'confidence': 0,
             'error': error_message,
-            'sources': []
+            'sources': [],
+            'available_sources': available_sources,
+            'successful_sources': successful_sources,
+            'success_rate': success_rate,
+            'status': 'Some data sources temporarily unavailable. Please try again in a few minutes.'
         }
 
     def _categorize_sentiment(self, score: float) -> str:
