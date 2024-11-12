@@ -1,13 +1,30 @@
 import streamlit as st
 import logging
 from datetime import datetime
+import sys
+
+# Configure logging with more detailed error tracking
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('app.log')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Must be the first Streamlit command
 st.set_page_config(
     page_title="Crypto Analysis Platform",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "Cryptocurrency Analysis Platform"
+    }
 )
 
 from components.sidebar import render_sidebar
@@ -17,6 +34,7 @@ from components.sentiment import render_sentiment_analysis
 from components.backtesting import render_backtesting_section
 from components.predictions import render_prediction_section
 from components.altcoin_analysis import render_altcoin_analysis
+from components.strategy_builder import StrategyBuilder
 from utils.data_fetcher import get_crypto_data
 from styles.theme import apply_custom_theme
 from dotenv import load_dotenv
@@ -24,12 +42,14 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+def handle_websocket_error():
+    """Handle WebSocket connection errors."""
+    st.warning("Connection issue detected. Trying to reconnect...")
+    try:
+        st.experimental_rerun()
+    except Exception as e:
+        logger.error(f"Failed to reconnect: {str(e)}")
+        st.error("Unable to establish connection. Please refresh the page.")
 
 def main():
     try:
@@ -58,7 +78,26 @@ def main():
         except Exception as e:
             logger.error(f"Error fetching market data: {str(e)}")
             st.error("Unable to fetch market data. Please try again later.")
-
+        
+        # Strategy Builder section
+        try:
+            st.markdown("---")  # Visual separator
+            strategy_builder = StrategyBuilder()
+            strategy_config = strategy_builder.render()
+            
+            if strategy_config:
+                st.success("Strategy configured successfully!")
+                logger.info("New strategy created")
+        except Exception as e:
+            logger.error(f"Error in strategy builder: {str(e)}")
+            st.error("Error in strategy builder. Please try again.")
+            st.info("""
+            💡 Troubleshooting tips:
+            - Check your strategy parameters
+            - Ensure all required fields are filled
+            - Try simplifying your strategy rules
+            """)
+        
         # Technical Analysis section
         if selected_coins and df is not None and not df.empty:
             try:
@@ -93,10 +132,6 @@ def main():
         except Exception as e:
             logger.error(f"Error in sentiment analysis: {str(e)}")
             st.error("Error in sentiment analysis. Some data sources might be temporarily unavailable.")
-            st.info("""
-            💡 The analysis will continue with available sources.
-            Try refreshing in a few minutes if the issue persists.
-            """)
         
         # Backtesting section
         st.markdown("---")  # Visual separator
@@ -118,4 +153,11 @@ def main():
         st.error("An unexpected error occurred. Please refresh the page or try again later.")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        if "WebSocket" in str(e):
+            handle_websocket_error()
+        else:
+            st.error(f"Application error: {str(e)}")
+            logger.error(f"Unhandled error: {str(e)}")

@@ -1,0 +1,6 @@
+2024-11-12 20:38:05,338 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
+2024-11-12 20:38:05,425 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
