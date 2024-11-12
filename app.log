@@ -262,3 +262,5 @@ To fix this error, please pass a unique `key` argument to the `radio` element.
 2024-11-12 22:20:18,970 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 22:23:15,394 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 22:23:15,736 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 22:23:21,988 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 22:29:03,407 - utils.altcoin_analyzer - INFO - Successfully connected to kraken

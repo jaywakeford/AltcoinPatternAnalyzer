@@ -20,6 +20,52 @@ class StrategyBuilder:
             'Volatility': ['Bollinger Bands', 'ATR', 'Keltner Channels']
         }
 
+    def _parse_strategy_text(self, text: str) -> Dict:
+        """Parse strategy description from natural language text."""
+        strategy = {
+            "entry_conditions": [],
+            "exit_conditions": [],
+            "position_size": None,
+            "stop_loss": None,
+            "take_profit": None,
+            "timeframe": None
+        }
+        
+        # Extract position size
+        position_size_match = re.search(r'position size:?\s*(\d+)%', text.lower())
+        if position_size_match:
+            strategy["position_size"] = float(position_size_match.group(1))
+            
+        # Extract stop loss
+        stop_loss_match = re.search(r'stop loss:?\s*(\d+)%', text.lower())
+        if stop_loss_match:
+            strategy["stop_loss"] = float(stop_loss_match.group(1))
+            
+        # Extract take profit
+        take_profit_match = re.search(r'take profit:?\s*(\d+)%', text.lower())
+        if take_profit_match:
+            strategy["take_profit"] = float(take_profit_match.group(1))
+            
+        # Extract timeframe
+        timeframe_match = re.search(r'timeframe:?\s*(\d+)([mhd])', text.lower())
+        if timeframe_match:
+            value, unit = timeframe_match.groups()
+            strategy["timeframe"] = f"{value}{unit}"
+            
+        # Extract entry conditions
+        entry_section = re.search(r'entry conditions?:(.+?)(?=exit conditions?:|$)', text, re.DOTALL | re.IGNORECASE)
+        if entry_section:
+            conditions = entry_section.group(1).strip().split('\n')
+            strategy["entry_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
+            
+        # Extract exit conditions
+        exit_section = re.search(r'exit conditions?:(.+?)(?=position size:|$)', text, re.DOTALL | re.IGNORECASE)
+        if exit_section:
+            conditions = exit_section.group(1).strip().split('\n')
+            strategy["exit_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
+        
+        return strategy
+
     def render(self) -> Optional[Tuple[Dict, Dict]]:
         """Render strategy builder interface and return both strategy and backtesting configs."""
         timestamp = datetime.now().timestamp()
@@ -267,6 +313,11 @@ class StrategyBuilder:
                 )
             
             if asset and initial_capital and start_date and end_date:
+                if isinstance(start_date, datetime):
+                    start_date = start_date.date()
+                if isinstance(end_date, datetime):
+                    end_date = end_date.date()
+                
                 if start_date >= end_date:
                     show_error(
                         "Invalid Date Range",
