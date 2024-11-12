@@ -1,4 +1,14 @@
 import streamlit as st
+
+# Must be the first Streamlit command
+st.set_page_config(
+    page_title="Crypto Analysis Platform",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Rest of the imports
 from components.sidebar import render_sidebar
 from components.charts import render_price_charts, render_dominance_chart
 from components.metrics import render_market_metrics
@@ -18,14 +28,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# Configure Streamlit page
-st.set_page_config(
-    page_title="Crypto Analysis Platform",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 def main():
     try:

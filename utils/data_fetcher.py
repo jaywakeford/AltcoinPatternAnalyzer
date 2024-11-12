@@ -35,7 +35,7 @@ def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
 def init_exchanges() -> List[ccxt.Exchange]:
     """Initialize multiple cryptocurrency exchanges with error handling."""
     exchanges = []
-    exchange_ids = ['kraken', 'kucoin', 'coinbasepro']
+    exchange_ids = ['kraken', 'kucoin', 'binance']
     
     for exchange_id in exchange_ids:
         try:
