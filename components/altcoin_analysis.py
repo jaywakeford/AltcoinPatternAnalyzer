@@ -254,14 +254,16 @@ def _render_strategy_builder(analyzer: AltcoinAnalyzer):
                     st.write(f"TP {i}: ${level:.2f}")
                 st.write(f"Stop Loss: ${exit_points['stop_loss']:.2f}")
         
-        # Risk metrics visualization
+        # Risk metrics visualization with fixed size values
         st.markdown("#### Risk Metrics")
         risk_df = pd.DataFrame(strategy['risk_metrics']).T
+        # Convert negative values to positive for scatter plot size
+        risk_df['plot_size'] = risk_df['momentum_score'].abs() + 1  # Add 1 to ensure positive values
         fig = px.scatter(
             risk_df,
             x='volatility',
             y='volume_factor',
-            size='momentum_score',
+            size='plot_size',  # Use positive values for size
             hover_name=risk_df.index,
             title="Risk-Return Profile",
             color_discrete_sequence=px.colors.qualitative.Set3

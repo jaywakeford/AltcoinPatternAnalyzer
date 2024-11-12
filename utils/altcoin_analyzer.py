@@ -121,6 +121,32 @@ class AltcoinAnalyzer:
             st.error(f"Error fetching market data: {str(e)}")
             return pd.DataFrame()
 
+    def _identify_cooling_periods(self, btc_df: pd.DataFrame) -> List[Dict]:
+        """Identify BTC cooling periods."""
+        cooling_periods = []
+        cooling = False
+        start_idx = None
+        
+        for idx, row in btc_df.iterrows():
+            if row['cooling'] and not cooling:
+                cooling = True
+                start_idx = idx
+            elif not row['cooling'] and cooling:
+                cooling = False
+                if start_idx is not None:
+                    duration = (idx - start_idx).total_seconds() / (24 * 3600)  # Convert to days
+                    cooling_periods.append({
+                        'start': start_idx,
+                        'end': idx,
+                        'duration': duration,
+                        'price_change': (
+                            btc_df.loc[idx, 'close'] / 
+                            btc_df.loc[start_idx, 'close'] - 1
+                        ) * 100
+                    })
+        
+        return cooling_periods
+
     def analyze_historical_sequence(self, timeframe: str = '1d', lookback_days: int = 365) -> Dict:
         """Analyze historical alt season patterns with improved error handling."""
         try:
@@ -280,30 +306,6 @@ class AltcoinAnalyzer:
             logger.error(f"Error calculating sequence metrics: {str(e)}")
             return metrics
 
-    def _identify_cooling_periods(self, btc_df: pd.DataFrame) -> List[Dict]:
-        """Identify BTC cooling periods."""
-        cooling_periods = []
-        cooling = False
-        start_idx = None
-        
-        for idx, row in btc_df.iterrows():
-            if row['cooling'] and not cooling:
-                cooling = True
-                start_idx = idx
-            elif not row['cooling'] and cooling:
-                cooling = False
-                if start_idx is not None:
-                    cooling_periods.append({
-                        'start': start_idx,
-                        'end': idx,
-                        'duration': (idx - start_idx).days,
-                        'price_change': (
-                            btc_df.loc[idx, 'close'] / 
-                            btc_df.loc[start_idx, 'close'] - 1
-                        ) * 100
-                    })
-        
-        return cooling_periods
     
     def _calculate_alt_performance(self, cooling_periods: List[Dict]) -> Dict:
         """Calculate alt performance during BTC cooling periods."""

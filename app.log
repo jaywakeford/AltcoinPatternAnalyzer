@@ -107,3 +107,55 @@ To fix this error, please pass a unique `key` argument to the `radio` element.
 2024-11-12 20:50:55,846 - __main__ - ERROR - Error in altcoin analysis: 'market_cap'
 2024-11-12 20:51:15,204 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
 2024-11-12 20:51:36,275 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:51:42,617 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:52:12,110 - utils.altcoin_analyzer - ERROR - Error in BTC correlation analysis: 'int' object has no attribute 'days'
+2024-11-12 20:52:14,575 - __main__ - ERROR - Error in altcoin analysis: 
+    Invalid element(s) received for the 'size' property of scatter.marker
+        Invalid elements include: [-70.7, -8.81, -2.36, -33.96, -2.49376, -1.34, -0.69225, -0.338, -0.029813, -0.3078]
+
+    The 'size' property is a number and may be specified as:
+      - An int or float in the interval [0, inf]
+      - A tuple, list, or one-dimensional numpy array of the above
+2024-11-12 20:52:17,222 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
+2024-11-12 20:52:18,763 - utils.altcoin_analyzer - ERROR - Error in BTC correlation analysis: 'int' object has no attribute 'days'
+2024-11-12 20:52:21,143 - __main__ - ERROR - Error in altcoin analysis: 
+    Invalid element(s) received for the 'size' property of scatter.marker
+        Invalid elements include: [-70.7, -8.81, -2.36, -33.96, -2.49376, -1.34, -0.69225, -0.338, -0.029813, -0.3078]
+
+    The 'size' property is a number and may be specified as:
+      - An int or float in the interval [0, inf]
+      - A tuple, list, or one-dimensional numpy array of the above
+2024-11-12 20:52:21,221 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
+2024-11-12 20:53:40,900 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:53:54,732 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:54:30,476 - utils.altcoin_analyzer - ERROR - Error in BTC correlation analysis: 'int' object has no attribute 'days'
+2024-11-12 20:54:32,857 - __main__ - ERROR - Error in altcoin analysis: 
+    Invalid element(s) received for the 'size' property of scatter.marker
+        Invalid elements include: [-74.07, -8.83, -2.36, -33.96, -2.64938, -1.34, -0.7046, -0.338, -0.032181, -0.3078]
+
+    The 'size' property is a number and may be specified as:
+      - An int or float in the interval [0, inf]
+      - A tuple, list, or one-dimensional numpy array of the above
+2024-11-12 20:54:32,955 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
+2024-11-12 20:56:25,012 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:56:25,617 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:56:29,473 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:56:30,203 - utils.altcoin_analyzer - INFO - Successfully connected to kraken
+2024-11-12 20:57:06,001 - utils.altcoin_analyzer - ERROR - Error in BTC correlation analysis: 'int' object has no attribute 'days'
+2024-11-12 20:57:08,280 - __main__ - ERROR - Error in altcoin analysis: 
+    Invalid element(s) received for the 'size' property of scatter.marker
+        Invalid elements include: [-75.01, -8.83, -2.18, -33.96, -2.62533, -1.34, -0.7046, -0.3419, -0.032181, -0.3078]
+
+    The 'size' property is a number and may be specified as:
+      - An int or float in the interval [0, inf]
+      - A tuple, list, or one-dimensional numpy array of the above
+2024-11-12 20:57:08,351 - __main__ - ERROR - Error in backtesting module: There are multiple `radio` elements with the same auto-generated ID. When this element is created, it is assigned an internal ID based on the element type and provided parameters. Multiple elements with the same type and parameters will cause this error.
+
+To fix this error, please pass a unique `key` argument to the `radio` element.
+2024-11-12 20:59:50,553 - utils.altcoin_analyzer - INFO - Successfully connected to kraken

@@ -131,10 +131,11 @@ Trading Schedule:
         3. Manual Builder: Build your strategy step by step
         """)
         
-        # Strategy input method selection
+        # Strategy input method selection with unique key
         input_method = st.radio(
             "Strategy Input Method",
-            ["Natural Language", "Template", "Manual Builder"]
+            ["Natural Language", "Template", "Manual Builder"],
+            key="strategy_input_method"  # Add unique key
         )
         
         if input_method == "Natural Language":

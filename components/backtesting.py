@@ -26,11 +26,12 @@ def render_backtesting_section():
     - Ideal for learning and comparison
     """)
     
-    # Strategy Selection with more prominent custom option
+    # Strategy Selection with unique key
     strategy_mode = st.radio(
         "Strategy Mode",
         ["Custom Strategy Builder", "Pre-built Strategies"],
-        help="Choose between creating your own strategy or using pre-built ones"
+        help="Choose between creating your own strategy or using pre-built ones",
+        key="strategy_mode_selector"  # Add unique key
     )
     
     st.markdown("---")
