@@ -91,7 +91,7 @@ class SentimentAnalyzer:
             self.twitter_client = None
 
     @st.cache_data(ttl=300)  # Cache for 5 minutes
-    def get_crypto_news_sentiment(self, keyword: str) -> Dict:
+    def get_crypto_news_sentiment(_self, keyword: str) -> Dict:
         """Get aggregated sentiment from multiple sources."""
         try:
             # Collect sentiment from different sources
@@ -103,7 +103,7 @@ class SentimentAnalyzer:
             
             # Try RSS feeds
             try:
-                rss_sentiment = self._analyze_rss_feeds(keyword)
+                rss_sentiment = _self._analyze_rss_feeds(keyword)
                 if rss_sentiment:
                     sources.append(rss_sentiment)
                     weight = rss_sentiment['confidence']
@@ -112,10 +112,11 @@ class SentimentAnalyzer:
                     total_samples += rss_sentiment['samples']
             except Exception as e:
                 failed_sources.append("RSS Feeds")
+                st.warning(f"Error analyzing RSS feeds: {str(e)}")
             
             # Try market data
             try:
-                market_sentiment = self._analyze_market_data(keyword)
+                market_sentiment = _self._analyze_market_data(keyword)
                 if market_sentiment:
                     sources.append(market_sentiment)
                     weight = market_sentiment['confidence']
@@ -124,11 +125,12 @@ class SentimentAnalyzer:
                     total_samples += market_sentiment['samples']
             except Exception as e:
                 failed_sources.append("Market Data")
+                st.warning(f"Error analyzing market data: {str(e)}")
             
             # Try Twitter if available
-            if self.twitter_client:
+            if _self.twitter_client:
                 try:
-                    twitter_sentiment = self._analyze_twitter_sentiment(keyword)
+                    twitter_sentiment = _self._analyze_twitter_sentiment(keyword)
                     if twitter_sentiment:
                         sources.append(twitter_sentiment)
                         weight = twitter_sentiment['confidence']
@@ -137,9 +139,10 @@ class SentimentAnalyzer:
                         total_samples += twitter_sentiment['samples']
                 except Exception as e:
                     failed_sources.append("Twitter")
+                    st.warning(f"Error analyzing Twitter data: {str(e)}")
             
             if not sources:
-                return self._create_error_response("No sentiment data available from any source")
+                return _self._create_error_response("No sentiment data available from any source")
             
             # Calculate final sentiment
             final_sentiment = weighted_sentiment / total_confidence if total_confidence > 0 else 0
@@ -148,35 +151,41 @@ class SentimentAnalyzer:
                 'score': final_sentiment * 100,  # Scale to -100 to 100
                 'samples': total_samples,
                 'timestamp': datetime.now().isoformat(),
-                'sentiment_category': self._categorize_sentiment(final_sentiment * 100),
+                'sentiment_category': _self._categorize_sentiment(final_sentiment * 100),
                 'confidence': min(1.0, total_confidence / len(sources)),
                 'sources': sources,
                 'failed_sources': failed_sources if failed_sources else None
             }
             
         except Exception as e:
-            return self._create_error_response(str(e))
+            return _self._create_error_response(str(e))
 
-    def _analyze_rss_feeds(self, keyword: str) -> Optional[Dict]:
+    def _analyze_rss_feeds(_self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from RSS feeds."""
         scores = []
         successful_feeds = 0
         
-        for feed_url in self.rss_feeds:
+        for feed_url in _self.rss_feeds:
             try:
                 feed = feedparser.parse(feed_url)
                 if not feed.entries:
                     continue
                 
-                for entry in feed.entries[:10]:
-                    text = f"{entry.title} {entry.summary if hasattr(entry, 'summary') else ''}"
-                    if keyword.lower() in text.lower():
-                        sentiment = self.vader.polarity_scores(text)
-                        scores.append(sentiment['compound'])
+                relevant_entries = [
+                    entry for entry in feed.entries[:10]
+                    if keyword.lower() in (entry.title + 
+                        getattr(entry, 'summary', '')).lower()
+                ]
                 
-                successful_feeds += 1
+                if relevant_entries:
+                    for entry in relevant_entries:
+                        text = f"{entry.title} {getattr(entry, 'summary', '')}"
+                        sentiment = _self.vader.polarity_scores(text)
+                        scores.append(sentiment['compound'])
+                    successful_feeds += 1
                     
-            except Exception:
+            except Exception as e:
+                st.warning(f"Error processing feed {feed_url}: {str(e)}")
                 continue
         
         if not scores:
@@ -186,56 +195,63 @@ class SentimentAnalyzer:
             'name': 'RSS Feeds',
             'score': sum(scores) / len(scores),
             'samples': len(scores),
-            'confidence': min(1.0, successful_feeds / len(self.rss_feeds))
+            'confidence': min(1.0, successful_feeds / len(_self.rss_feeds))
         }
 
-    def _analyze_market_data(self, keyword: str) -> Optional[Dict]:
+    def _analyze_market_data(_self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from market data."""
         try:
             symbol = keyword.upper()
-            data = cryptocompare.get_price(
+            price_data = cryptocompare.get_price(
                 symbol,
                 'USD',
                 full=True
             )
             
-            if not data or 'RAW' not in data or symbol not in data['RAW']:
+            if not price_data or 'RAW' not in price_data:
                 return None
-
-            raw_data = data['RAW'][symbol]['USD']
-            
-            # Calculate sentiment based on multiple indicators
-            indicators = {
-                'price_change_24h': float(raw_data.get('CHANGEPCT24HOUR', 0)) / 100,
-                'volume_change': float(raw_data.get('VOLUMEDAYTO', 0)) / float(raw_data.get('VOLUMEDAYFROM', 1)) - 1
-            }
-            
-            # Normalize indicators to [-1, 1] range
-            scores = [max(min(value, 1), -1) for value in indicators.values() if value != 0]
-            
-            if not scores:
+                
+            raw_data = price_data['RAW'].get(symbol, {}).get('USD', {})
+            if not raw_data:
                 return None
+                
+            # Calculate sentiment indicators
+            price_change = float(raw_data.get('CHANGEPCT24HOUR', 0))
+            volume_change = (
+                float(raw_data.get('VOLUMEDAYTO', 0)) / 
+                float(raw_data.get('VOLUMEDAYFROM', 1)) - 1
+            )
             
+            # Normalize scores to [-1, 1] range
+            normalized_scores = [
+                max(min(value/100, 1), -1) 
+                for value in [price_change, volume_change * 100]
+            ]
+            
+            if not normalized_scores:
+                return None
+                
             return {
                 'name': 'Market Data',
-                'score': sum(scores) / len(scores),
-                'samples': len(scores),
-                'confidence': 0.8  # High confidence in price data
+                'score': sum(normalized_scores) / len(normalized_scores),
+                'samples': len(normalized_scores),
+                'confidence': 0.8
             }
             
-        except Exception:
+        except Exception as e:
+            st.warning(f"Error analyzing market data: {str(e)}")
             return None
 
     @rate_limit(calls=180, period=900)  # 180 calls per 15 minutes
-    def _analyze_twitter_sentiment(self, keyword: str) -> Optional[Dict]:
+    def _analyze_twitter_sentiment(_self, keyword: str) -> Optional[Dict]:
         """Analyze sentiment from Twitter."""
-        if not self.twitter_client:
+        if not _self.twitter_client:
             return None
 
         try:
             # Search for tweets about the cryptocurrency
             search_query = f"(#{keyword.lower()} OR ${keyword.upper()}) -is:retweet lang:en"
-            tweets = self.twitter_client.search_tweets(
+            tweets = _self.twitter_client.search_tweets(
                 q=search_query,
                 count=100,
                 tweet_mode='extended'
@@ -248,7 +264,7 @@ class SentimentAnalyzer:
             for tweet in tweets:
                 # Weight sentiment by engagement metrics
                 engagement = tweet.favorite_count + tweet.retweet_count
-                sentiment = self.vader.polarity_scores(tweet.full_text)
+                sentiment = _self.vader.polarity_scores(tweet.full_text)
                 weight = max(1, min(5, engagement / 10))  # Cap weight at 5
                 scores.extend([sentiment['compound']] * int(weight))
             
@@ -262,10 +278,11 @@ class SentimentAnalyzer:
                 'confidence': min(1.0, len(tweets) / 100)
             }
             
-        except Exception:
+        except Exception as e:
+            st.warning(f"Error analyzing Twitter data: {str(e)}")
             return None
 
-    def _create_error_response(self, error_message: str) -> Dict:
+    def _create_error_response(_self, error_message: str) -> Dict:
         """Create a standardized error response."""
         return {
             'score': 0,
@@ -277,7 +294,7 @@ class SentimentAnalyzer:
             'sources': []
         }
 
-    def _categorize_sentiment(self, score: float) -> str:
+    def _categorize_sentiment(_self, score: float) -> str:
         """Categorize sentiment score into categories."""
         if score >= 25:
             return 'bullish'
