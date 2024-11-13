@@ -1,7 +1,7 @@
 import streamlit as st
+from typing import Dict, Optional, Tuple
 import re
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, time
+from datetime import datetime
 from utils.ui_components import show_error, show_warning, group_elements
 
 class StrategyBuilder:
@@ -9,7 +9,7 @@ class StrategyBuilder:
         # Initialize default state
         if 'strategy_state' not in st.session_state:
             st.session_state.strategy_state = {
-                'input_method': 'Natural Language',
+                'input_method': 'Template',
                 'description': '',
                 'template': None,
                 'manual_config': {
@@ -60,6 +60,66 @@ class StrategyBuilder:
             }
         }
 
+    def _parse_strategy_text(self, text: str) -> Dict:
+        """Simple rule-based strategy text parser."""
+        strategy = {
+            "entry_conditions": [],
+            "exit_conditions": [],
+            "position_size": 10.0,
+            "stop_loss": None,
+            "take_profit": None,
+            "timeframe": "1h"
+        }
+        
+        lines = text.lower().split('\n')
+        current_section = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            if 'entry' in line and ':' in line:
+                current_section = 'entry'
+                continue
+            elif 'exit' in line and ':' in line:
+                current_section = 'exit'
+                continue
+            elif 'position' in line and 'size' in line:
+                matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', line)
+                if matches:
+                    strategy['position_size'] = float(matches[0])
+                continue
+            elif 'stop' in line and 'loss' in line:
+                matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', line)
+                if matches:
+                    strategy['stop_loss'] = float(matches[0])
+                continue
+            elif 'take' in line and 'profit' in line:
+                matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', line)
+                if matches:
+                    strategy['take_profit'] = float(matches[0])
+                continue
+            elif 'timeframe' in line:
+                timeframes = {
+                    'minute': '1m',
+                    'hour': '1h',
+                    'day': '1d',
+                    'week': '1w'
+                }
+                for key, value in timeframes.items():
+                    if key in line:
+                        strategy['timeframe'] = value
+                        break
+                continue
+                
+            if current_section == 'entry' and line:
+                strategy['entry_conditions'].append(line)
+            elif current_section == 'exit' and line:
+                strategy['exit_conditions'].append(line)
+                
+        return strategy
+
     def render(self) -> Optional[Tuple[Dict, Dict]]:
         """Render strategy builder interface."""
         try:
@@ -68,21 +128,16 @@ class StrategyBuilder:
             # Method selector
             input_method = st.radio(
                 "Strategy Input Method",
-                ["Natural Language", "Template", "Manual Builder"],
+                ["Template", "Manual Builder"],
                 horizontal=True,
                 help="Choose how you want to create your strategy"
             )
-            
-            # Add spacing
-            st.markdown("<div style='margin: 1em 0;'></div>", unsafe_allow_html=True)
             
             # Update session state
             st.session_state.strategy_state['input_method'] = input_method
 
             strategy_config = None
-            if input_method == "Natural Language":
-                strategy_config = self._render_natural_language_input()
-            elif input_method == "Template":
+            if input_method == "Template":
                 strategy_config = self._render_template_selection()
             else:
                 strategy_config = self._render_manual_builder()
@@ -101,108 +156,6 @@ class StrategyBuilder:
                 "Please try refreshing the page or contact support."
             )
             return None
-
-    def _render_natural_language_input(self) -> Optional[Dict]:
-        """Render natural language input section."""
-        with st.container():
-            st.markdown("""
-            ### Strategy Description Guidelines
-            Describe your trading strategy in plain English. Include:
-
-            **Required Information:**
-            - Entry Conditions (e.g., "Buy when 50-day SMA crosses above 200-day SMA")
-            - Exit Conditions (e.g., "Sell when RSI goes above 70")
-            - Position Size (e.g., "Use 30% position size")
-            - Risk Management (e.g., "Set stop loss at 5% and take profit at 15%")
-
-            **Optional Information:**
-            - Timeframe (e.g., "Use 4-hour timeframe")
-            - Additional Indicators (e.g., "Monitor volume for confirmation")
-            - Market Phase Filters (e.g., "Only trade during uptrend")
-            """)
-
-            description = st.text_area(
-                "Strategy Description",
-                value=st.session_state.strategy_state.get('description', ''),
-                height=200,
-                help="Describe your trading strategy in detail"
-            )
-
-            # Update session state
-            st.session_state.strategy_state['description'] = description
-
-            if description:
-                if st.button("Parse Strategy", type="primary"):
-                    try:
-                        strategy = self._parse_strategy_text(description)
-                        if strategy:
-                            st.success("Strategy parsed successfully!")
-                            self._display_strategy_summary(strategy)
-                            return strategy
-                    except Exception as e:
-                        show_error(
-                            "Strategy Parsing Error",
-                            str(e),
-                            "Please check your strategy description format."
-                        )
-            return None
-
-    def _parse_strategy_text(self, text: str) -> Dict:
-        """Parse strategy description from natural language text."""
-        strategy = {
-            "strategy_type": "custom",
-            "entry_conditions": [],
-            "exit_conditions": [],
-            "position_size": None,
-            "stop_loss": None,
-            "take_profit": None,
-            "timeframe": None
-        }
-        
-        # Extract position size
-        position_size_match = re.search(r'position size:?\s*(\d+)%', text.lower())
-        if position_size_match:
-            strategy["position_size"] = float(position_size_match.group(1))
-            
-        # Extract stop loss
-        stop_loss_match = re.search(r'stop loss:?\s*(\d+)%', text.lower())
-        if stop_loss_match:
-            strategy["stop_loss"] = float(stop_loss_match.group(1))
-            
-        # Extract take profit
-        take_profit_match = re.search(r'take profit:?\s*(\d+)%', text.lower())
-        if take_profit_match:
-            strategy["take_profit"] = float(take_profit_match.group(1))
-            
-        # Extract timeframe
-        timeframe_match = re.search(r'timeframe:?\s*(\d+)([mhd])', text.lower())
-        if timeframe_match:
-            value, unit = timeframe_match.groups()
-            strategy["timeframe"] = f"{value}{unit}"
-            
-        # Extract entry conditions
-        entry_section = re.search(r'entry conditions?:(.+?)(?=exit conditions?:|$)', 
-                                text, re.DOTALL | re.IGNORECASE)
-        if entry_section:
-            conditions = entry_section.group(1).strip().split('\n')
-            strategy["entry_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
-            
-        # Extract exit conditions
-        exit_section = re.search(r'exit conditions?:(.+?)(?=position size:|$)', 
-                                text, re.DOTALL | re.IGNORECASE)
-        if exit_section:
-            conditions = exit_section.group(1).strip().split('\n')
-            strategy["exit_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
-        
-        # Validate required fields
-        if not strategy["entry_conditions"]:
-            raise ValueError("Entry conditions are required")
-        if not strategy["exit_conditions"]:
-            raise ValueError("Exit conditions are required")
-        if not strategy["position_size"]:
-            raise ValueError("Position size is required")
-        
-        return strategy
 
     def _render_template_selection(self) -> Optional[Dict]:
         """Render template selection."""
@@ -265,14 +218,6 @@ class StrategyBuilder:
                     ),
                     help="Chart timeframe for analysis"
                 )
-
-            # Update session state
-            st.session_state.strategy_state['manual_config'].update({
-                'position_size': position_size,
-                'stop_loss': stop_loss,
-                'take_profit': take_profit,
-                'timeframe': timeframe
-            })
 
             # Strategy Type
             strategy_type = st.selectbox(

@@ -4,9 +4,10 @@ enableCORS = true
 address = "0.0.0.0"
 port = 5000
 
-[ui]
-hideTopBar = true
-hideSidebarNav = true
+[browser]
+serverAddress = "0.0.0.0"
+serverPort = 5000
+gatherUsageStats = false
 
 [theme]
 base = "dark"
@@ -16,15 +17,13 @@ secondaryBackgroundColor = "#262730"
 textColor = "#FAFAFA"
 font = "sans serif"
 
+[ui]
+hideTopBar = true
+hideSidebarNav = true
+
 [client]
 toolbarMode = "minimal"
 showErrorDetails = true
 
-[browser]
-serverAddress = "0.0.0.0"
-serverPort = 5000
-gatherUsageStats = false
-
-[runner]
-magicEnabled = true
-fastRerenderEnabled = true
+[logger]
+level = "info"

@@ -21,9 +21,7 @@ class AltcoinAnalyzer:
         }
         self.exchanges = [
             'kraken',
-            'coinbase',
-            'ftx',
-            'binance'
+            'kucoin'
         ]
         self.active_exchange = None
         self._initialize_exchange()

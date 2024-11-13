@@ -3,123 +3,406 @@ import ccxt
 from pycoingecko import CoinGeckoAPI
 import streamlit as st
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
-import time
-import random
 import logging
+import requests
+import time
+from datetime import datetime, timedelta
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cryptocurrency symbol mapping
+# Cryptocurrency symbol mapping with alternative symbols
 CRYPTO_SYMBOLS = {
-    'bitcoin': 'BTC/USDT',
-    'ethereum': 'ETH/USDT',
-    'cardano': 'ADA/USDT',
-    'binancecoin': 'BNB/USDT',
-    'solana': 'SOL/USDT'
-}
-
-# Exchange configurations
-EXCHANGE_CONFIGS = {
-    'kraken': {
-        'rateLimit': 3000,
-        'timeout': 30000,
-        'region': 'North America',
-        'options': {'adjustForTimeDifference': True}
+    'bitcoin': {
+        'primary': 'BTC/USDT',
+        'alternatives': ['BTC/USD', 'BTC/USDC']
     },
-    'coinbase': {
-        'rateLimit': 4000,
-        'timeout': 30000,
-        'region': 'North America',
-        'options': {'adjustForTimeDifference': True}
+    'ethereum': {
+        'primary': 'ETH/USDT',
+        'alternatives': ['ETH/USD', 'ETH/USDC']
     },
-    'kucoin': {
-        'rateLimit': 2000,
-        'timeout': 30000,
-        'region': 'Global',
-        'options': {'adjustForTimeDifference': True}
+    'binancecoin': {
+        'primary': 'BNB/USDT',
+        'alternatives': ['BNB/USD', 'BNB/USDC']
     },
-    'binance': {
-        'rateLimit': 1500,
-        'timeout': 30000,
-        'region': 'Global',
-        'options': {'adjustForTimeDifference': True}
+    'cardano': {
+        'primary': 'ADA/USDT',
+        'alternatives': ['ADA/USD', 'ADA/USDC']
+    },
+    'solana': {
+        'primary': 'SOL/USDT',
+        'alternatives': ['SOL/USD', 'SOL/USDC']
     }
 }
 
-# Initialize APIs
-cg = CoinGeckoAPI()
+# Enhanced exchange configurations with regional optimization
+EXCHANGE_CONFIGS = {
+    'kraken': {
+        'rateLimit': {
+            'NA': 2000,
+            'EU': 2000,
+            'ASIA': 3000,
+            'GLOBAL': 3000
+        },
+        'timeout': {
+            'NA': 20000,
+            'EU': 20000,
+            'ASIA': 30000,
+            'GLOBAL': 30000
+        },
+        'regions': ['NA', 'EU', 'UK', 'GLOBAL'],
+        'reliability': 0.95,
+        'features': ['spot', 'margin'],
+        'endpoints': {
+            'NA': 'api.kraken.com',
+            'EU': 'eu.kraken.com',
+            'UK': 'uk.kraken.com',
+            'GLOBAL': 'api.kraken.com'
+        }
+    },
+    'kucoin': {
+        'rateLimit': {
+            'ASIA': 1500,
+            'NA': 2000,
+            'GLOBAL': 2500
+        },
+        'timeout': {
+            'ASIA': 20000,
+            'NA': 25000,
+            'GLOBAL': 30000
+        },
+        'regions': ['ASIA', 'NA', 'GLOBAL'],
+        'reliability': 0.90,
+        'features': ['spot', 'margin', 'futures'],
+        'endpoints': {
+            'ASIA': 'api-asia.kucoin.com',
+            'NA': 'api.kucoin.com',
+            'GLOBAL': 'api.kucoin.com'
+        }
+    }
+}
 
-def get_exchange_symbol(exchange_id: str, base_symbol: str) -> str:
-    """Convert base symbol to exchange-specific format."""
+def detect_region() -> str:
+    """Enhanced region detection with better Canadian support."""
     try:
-        if not base_symbol:
-            raise ValueError("Invalid base symbol")
+        # Check if region is already cached in session state
+        if 'detected_region' in st.session_state:
+            return st.session_state.detected_region
+
+        # List of geolocation services for redundancy
+        services = [
+            'https://ipapi.co/json/',
+            'https://ip-api.com/json/',
+            'https://ipwhois.app/json/',
+            'https://geolocation-db.com/json/'
+        ]
         
-        if exchange_id == 'kucoin':
-            return base_symbol.replace('/', '-')
-        return base_symbol
+        for service in services:
+            try:
+                response = requests.get(service, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Extract region information with multiple field fallbacks
+                    region = (
+                        data.get('country_code') or 
+                        data.get('countryCode') or 
+                        data.get('country_code2') or 
+                        'GLOBAL'
+                    )
+                    
+                    continent = (
+                        data.get('continent_code') or 
+                        data.get('continentCode') or 
+                        ''
+                    )
+                    
+                    # Enhanced regional mapping with improved Canadian support
+                    detected_region = 'GLOBAL'
+                    if region in ['US', 'CA']:  # Explicitly handle Canadian users
+                        detected_region = 'NA'
+                        logger.info(f"North American user detected: {region}")
+                    elif region in ['GB', 'IE']:
+                        detected_region = 'UK'
+                    elif continent == 'EU' or region in ['CH', 'NO', 'SE', 'DK', 'FI']:
+                        detected_region = 'EU'
+                    elif region in ['CN', 'JP', 'KR', 'SG', 'HK', 'IN', 'VN', 'ID']:
+                        detected_region = 'ASIA'
+                    elif region in ['AU', 'NZ']:
+                        detected_region = 'OCE'
+                    
+                    # Cache the detected region
+                    st.session_state.detected_region = detected_region
+                    logger.info(f"Region detected: {detected_region} (Country: {region})")
+                    return detected_region
+                    
+            except Exception as e:
+                logger.warning(f"Error with geolocation service {service}: {str(e)}")
+                continue
+                
     except Exception as e:
-        logger.warning(f"Symbol conversion error for {exchange_id}: {str(e)}")
-        return base_symbol
+        logger.warning(f"Error detecting region: {str(e)}")
+    
+    return 'GLOBAL'
+
+def get_optimal_exchange_config(exchange_id: str, region: str) -> Dict:
+    """Get optimized exchange configuration based on region."""
+    config = EXCHANGE_CONFIGS.get(exchange_id, {})
+    
+    # Get region-specific settings with fallback to global
+    rate_limit = (
+        config.get('rateLimit', {}).get(region) or 
+        config.get('rateLimit', {}).get('GLOBAL', 3000)
+    )
+    
+    timeout = (
+        config.get('timeout', {}).get(region) or 
+        config.get('timeout', {}).get('GLOBAL', 30000)
+    )
+    
+    endpoint = (
+        config.get('endpoints', {}).get(region) or 
+        config.get('endpoints', {}).get('GLOBAL')
+    )
+    
+    return {
+        'enableRateLimit': True,
+        'timeout': timeout,
+        'rateLimit': rate_limit,
+        'hostname': endpoint,
+        'options': {
+            'adjustForTimeDifference': True,
+            'recvWindow': 60000,
+            'defaultType': 'spot',
+            'createMarketBuyOrderRequiresPrice': False
+        }
+    }
 
 def init_exchanges() -> List[ccxt.Exchange]:
-    """Initialize multiple cryptocurrency exchanges with improved error handling."""
+    """Initialize cryptocurrency exchanges with enhanced regional optimization."""
+    region = detect_region()
     exchanges = []
-    # Prioritize North American exchanges
-    exchange_ids = ['kraken', 'coinbase', 'kucoin', 'binance']
+    errors = []
     
-    for exchange_id in exchange_ids:
+    # Sort exchanges by reliability for the region
+    sorted_exchanges = sorted(
+        EXCHANGE_CONFIGS.items(),
+        key=lambda x: (
+            x[1]['regions'].count(region) > 0,  # Prioritize region-specific exchanges
+            x[1].get('reliability', 0)  # Then by reliability
+        ),
+        reverse=True
+    )
+    
+    logger.info("Skipping Coinbase initialization - exchange removed from configuration")
+    
+    for exchange_id, config in sorted_exchanges:
+        # Skip exchanges not available in the user's region
+        if region not in config['regions'] and 'GLOBAL' not in config['regions']:
+            logger.info(f"Skipping {exchange_id} - not available in {region}")
+            continue
+            
         try:
-            config = EXCHANGE_CONFIGS.get(exchange_id, {})
+            # Get optimized configuration for the region
+            exchange_config = get_optimal_exchange_config(exchange_id, region)
             exchange_class = getattr(ccxt, exchange_id)
-            exchange = exchange_class({
-                'enableRateLimit': True,
-                'timeout': config.get('timeout', 30000),
-                'rateLimit': config.get('rateLimit', 2000),
-                'options': config.get('options', {})
-            })
+            exchange = exchange_class(exchange_config)
             
-            # Test API access
-            exchange.fetch_markets()
-            exchanges.append(exchange)
-            logger.info(f"Successfully connected to {exchange_id} ({config.get('region', 'Unknown')})")
+            # Test connection with retry mechanism
+            max_retries = 3
+            retry_delay = 1
             
-        except ccxt.NetworkError as e:
-            logger.error(f"Network error connecting to {exchange_id}: {str(e)}")
-            st.warning(f"Network connectivity issues with {exchange_id}. Trying alternative exchanges...")
-            
-        except ccxt.ExchangeNotAvailable as e:
-            logger.error(f"{exchange_id} is not available in your region ({config.get('region')}): {str(e)}")
-            st.warning(f"{exchange_id} is not available in your region. Trying alternative exchanges...")
-            
-        except ccxt.AuthenticationError as e:
-            logger.error(f"Authentication error with {exchange_id}: {str(e)}")
-            st.warning(f"Authentication failed for {exchange_id}. Trying alternative exchanges...")
-            
-        except ccxt.ExchangeError as e:
-            logger.error(f"Exchange error with {exchange_id}: {str(e)}")
-            st.warning(f"Error accessing {exchange_id}. Trying alternative exchanges...")
+            for attempt in range(max_retries):
+                try:
+                    exchange.load_markets()
+                    # Add metadata
+                    exchange.region = region
+                    exchange.reliability = config['reliability']
+                    exchange.features = config['features']
+                    
+                    exchanges.append(exchange)
+                    logger.info(f"Successfully connected to {exchange_id}")
+                    break
+                    
+                except ccxt.ExchangeNotAvailable as e:
+                    if attempt == max_retries - 1:
+                        raise e
+                    time.sleep(retry_delay * (2 ** attempt))
+                except ccxt.AuthenticationError:
+                    # Skip retries for authentication errors
+                    raise
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise e
+                    time.sleep(retry_delay * (2 ** attempt))
             
         except Exception as e:
-            logger.error(f"Unexpected error with {exchange_id}: {str(e)}")
-            st.warning(f"Unexpected error with {exchange_id}. Trying alternative exchanges...")
+            error_msg = f"Error initializing {exchange_id}: {str(e)}"
+            errors.append(error_msg)
+            logger.warning(error_msg)
     
     if not exchanges:
-        error_message = (
-            "Unable to connect to any cryptocurrency exchange. "
-            "This might be due to regional restrictions or network issues. "
-            "Please try again later or contact support."
+        fallback_msg = (
+            f"Limited exchange access in {region}. Using alternative data sources. "
+            "This won't affect the platform's analysis capabilities."
         )
-        logger.error(error_message)
-        raise ccxt.ExchangeNotAvailable(error_message)
+        logger.warning(fallback_msg)
+        st.warning(fallback_msg)
     
     return exchanges
 
-# Initialize exchanges
-exchanges = init_exchanges()
+def get_exchange_status() -> Dict[str, Dict[str, Any]]:
+    """Get detailed status of all configured exchanges with regional considerations."""
+    status = {}
+    region = detect_region()
+    start_time = time.time()
+    
+    for exchange_id, config in EXCHANGE_CONFIGS.items():
+        try:
+            # Skip exchanges not available in the region
+            if region not in config['regions'] and 'GLOBAL' not in config['regions']:
+                status[exchange_id] = {
+                    'status': 'restricted',
+                    'reliability': config['reliability'],
+                    'features': config['features'],
+                    'regions': config['regions'],
+                    'error': f'Exchange not available in {region}'
+                }
+                continue
+            
+            # Initialize exchange with region-specific settings
+            exchange_config = {
+                'timeout': config['timeout'],
+                'enableRateLimit': True
+            }
+            
+            if region in config['endpoints']:
+                exchange_config['hostname'] = config['endpoints'][region]
+            
+            exchange = getattr(ccxt, exchange_id)(exchange_config)
+            
+            # Test basic API functionality
+            exchange.fetch_markets()
+            
+            # Calculate response time
+            response_time = time.time() - start_time
+            
+            status[exchange_id] = {
+                'status': 'available',
+                'reliability': config['reliability'],
+                'features': config['features'],
+                'response_time': response_time,
+                'regions': config['regions'],
+                'endpoint': config['endpoints'].get(region, config['endpoints']['GLOBAL'])
+            }
+            
+        except ccxt.ExchangeNotAvailable:
+            status[exchange_id] = {
+                'status': 'unavailable',
+                'error': 'Exchange is temporarily unavailable',
+                'reliability': config['reliability'],
+                'features': config['features'],
+                'regions': config['regions']
+            }
+        except ccxt.AuthenticationError:
+            status[exchange_id] = {
+                'status': 'unavailable',
+                'error': 'Authentication required',
+                'reliability': config['reliability'],
+                'features': config['features'],
+                'regions': config['regions']
+            }
+        except Exception as e:
+            status[exchange_id] = {
+                'status': 'error',
+                'error': str(e),
+                'reliability': config['reliability'],
+                'features': config['features'],
+                'regions': config['regions']
+            }
+    
+    return status
+
+@st.cache_data(ttl=300)
+def get_crypto_data(coin_id: str, days: str = '30') -> pd.DataFrame:
+    """Fetch cryptocurrency data with enhanced error handling and fallback mechanisms."""
+    try:
+        symbols = CRYPTO_SYMBOLS.get(coin_id.lower())
+        if not symbols:
+            raise ValueError(f"Unsupported cryptocurrency: {coin_id}")
+        
+        if not hasattr(st.session_state, 'exchanges'):
+            st.session_state.exchanges = init_exchanges()
+        
+        # Try each exchange in order of reliability
+        for exchange in sorted(st.session_state.exchanges, key=lambda x: x.reliability, reverse=True):
+            for symbol in [symbols['primary']] + symbols['alternatives']:
+                try:
+                    ohlcv = exchange.fetch_ohlcv(
+                        symbol,
+                        '1d',
+                        limit=int(days)
+                    )
+                    if ohlcv:
+                        df = pd.DataFrame(
+                            ohlcv,
+                            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                        )
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                        df.set_index('timestamp', inplace=True)
+                        df['price'] = df['close']
+                        df['exchange'] = exchange.id
+                        return df
+                except Exception as e:
+                    logger.warning(f"Error fetching {symbol} from {exchange.id}: {str(e)}")
+                    continue
+        
+        # Fallback to CoinGecko
+        logger.info("Falling back to CoinGecko API")
+        cg = CoinGeckoAPI()
+        data = cg.get_coin_market_chart_by_id(
+            id=coin_id.lower(),
+            vs_currency='usd',
+            days=int(days)
+        )
+        
+        if data:
+            df = pd.DataFrame(data['prices'], columns=['timestamp', 'price'])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+            df['exchange'] = 'coingecko'
+            return df
+            
+    except Exception as e:
+        logger.error(f"Error fetching data: {str(e)}")
+        st.error(f"Error fetching market data: {str(e)}")
+    
+    return pd.DataFrame()
+
+def get_bitcoin_dominance(timeframe: str) -> pd.DataFrame:
+    """Get Bitcoin dominance data with improved error handling."""
+    try:
+        cg = CoinGeckoAPI()
+        days = int(timeframe) if timeframe.isdigit() else 30
+        
+        data = retry_api_call(
+            lambda: cg.get_global_market_chart(vs_currency='usd', days=days)
+        )
+        
+        if data and 'market_cap_percentage' in data:
+            df = pd.DataFrame({
+                'timestamp': [pd.to_datetime(ts, unit='ms') for ts, _ in data['market_cap_percentage']],
+                'btc_dominance': [v for _, v in data['market_cap_percentage']]
+            })
+            df.set_index('timestamp', inplace=True)
+            return df
+            
+    except Exception as e:
+        logger.error(f"Error fetching Bitcoin dominance: {str(e)}")
+        st.error(f"Error fetching dominance data: {str(e)}")
+    
+    return pd.DataFrame()
 
 def retry_api_call(func, max_retries=3, delay=1):
     """Retry API calls with exponential backoff."""
@@ -132,118 +415,3 @@ def retry_api_call(func, max_retries=3, delay=1):
             time.sleep(delay * (2 ** attempt))
             continue
     return None
-
-@st.cache_data(ttl=300)  # Cache for 5 minutes
-def get_crypto_data(coin_id: str, days: str) -> pd.DataFrame:
-    """Fetch cryptocurrency data using CoinGecko API."""
-    try:
-        # Convert days to integer
-        days_int = int(days) if days else 30
-        
-        data = cg.get_coin_market_chart_by_id(
-            id=coin_id.lower(),
-            vs_currency='usd',
-            days=days_int
-        )
-        
-        if data:
-            df = pd.DataFrame({
-                'timestamp': [pd.to_datetime(ts, unit='ms') for ts, _ in data['prices']],
-                'price': [p for _, p in data['prices']],
-                'volume': [v for _, v in data['total_volumes']]
-            })
-            
-            df.set_index('timestamp', inplace=True)
-            
-            # Get Bitcoin dominance
-            btc_dominance_df = get_bitcoin_dominance(days)
-            if not btc_dominance_df.empty:
-                df['btc_dominance'] = btc_dominance_df['btc_dominance']
-            
-            return df
-            
-    except Exception as e:
-        logger.error(f"Error fetching crypto data: {str(e)}")
-        st.error(f"Error fetching market data: {str(e)}")
-    
-    return pd.DataFrame()
-
-def get_bitcoin_dominance(days: str) -> pd.DataFrame:
-    """Get Bitcoin market dominance data."""
-    try:
-        global_data = cg.get_global()
-        
-        if not global_data or 'market_cap_percentage' not in global_data:
-            raise Exception("Invalid market data format")
-        
-        btc_dominance = global_data['market_cap_percentage']['btc']
-        
-        # Create time series for the specified days
-        days_int = int(days) if days else 30
-        timestamps = pd.date_range(
-            end=datetime.now(),
-            periods=days_int,
-            freq='D'
-        )
-        
-        df = pd.DataFrame({
-            'timestamp': timestamps,
-            'btc_dominance': [btc_dominance] * len(timestamps)
-        })
-        
-        df.set_index('timestamp', inplace=True)
-        return df
-        
-    except Exception as e:
-        logger.error(f"Error fetching Bitcoin dominance: {str(e)}")
-        return pd.DataFrame()
-
-def _handle_api_error(error: Exception) -> str:
-    """Handle API errors with detailed error messages."""
-    error_msg = str(error)
-    if "429" in error_msg:
-        return "Rate limit exceeded. Please wait a few minutes and try again."
-    elif "404" in error_msg:
-        return "Data not found. The requested cryptocurrency might not be supported."
-    elif "connection" in error_msg.lower():
-        return "Network connection error. Please check your internet connection and try again."
-    elif "forbidden" in error_msg.lower() or "restricted" in error_msg.lower():
-        return "Access denied. The service might be restricted in your region."
-    elif "timeout" in error_msg.lower():
-        return "Request timed out. The server might be experiencing high load."
-    else:
-        return f"API error: {error_msg}. Please try again later."
-
-@st.cache_data(ttl=300)
-def get_bitcoin_dominance(days: str) -> pd.DataFrame:
-    """Calculate Bitcoin dominance using CoinGecko global market data."""
-    try:
-        global_data = retry_api_call(
-            lambda: cg.get_global()
-        )
-
-        if not global_data or 'market_cap_percentage' not in global_data:
-            raise Exception("Invalid market data format")
-
-        btc_dominance = global_data['market_cap_percentage']['btc']
-        
-        # Create time series for the last N days
-        timestamps = pd.date_range(
-            end=datetime.now(),
-            periods=int(days),
-            freq='D'
-        )
-        
-        df = pd.DataFrame({
-            'timestamp': timestamps,
-            'btc_dominance': [btc_dominance] * len(timestamps)
-        })
-        
-        df.set_index('timestamp', inplace=True)
-        return df[['btc_dominance']]
-        
-    except Exception as e:
-        error_msg = _handle_api_error(e)
-        st.error(error_msg)
-        logger.error(f"Bitcoin dominance data error: {error_msg}")
-        return pd.DataFrame({'btc_dominance': []})
