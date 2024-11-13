@@ -3,8 +3,9 @@ import pandas as pd
 from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
 from components.predictions import render_prediction_section
+from components.backtesting import render_backtesting_section
 from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region, exchange_manager
-from utils.ui_components import show_error, show_warning
+from utils.ui_components import show_error, show_warning, show_data_source_info
 import logging
 
 # Configure logging
@@ -33,6 +34,8 @@ def initialize_session_state():
             st.session_state.selected_region = detect_region()
         if 'sidebar_config' not in st.session_state:
             st.session_state.sidebar_config = None
+        if 'data_source' not in st.session_state:
+            st.session_state.data_source = None
         
         return True
             
@@ -59,23 +62,55 @@ def initialize_exchanges():
             
             if available_count > 0:
                 st.success(f"Successfully connected to {available_count} exchanges!")
+                show_data_source_info(
+                    "Primary Exchange",
+                    {"Available": f"{available_count} exchanges", "Region": st.session_state.selected_region}
+                )
                 return True
             else:
                 show_warning(
                     "Limited Exchange Access",
-                    "No exchanges are currently available in your region. Using fallback data sources."
+                    "No exchanges are currently available in your region. Using fallback data sources.",
+                    "Data will be fetched from CoinGecko API"
                 )
-                return False
+                show_data_source_info(
+                    "Fallback Source",
+                    {"Source": "CoinGecko API", "Region": "Global"}
+                )
+                return True
         
     except Exception as e:
         logger.error(f"Exchange initialization error: {str(e)}")
         show_error(
             "Exchange Connection Error",
             "Unable to connect to cryptocurrency exchanges",
-            "Please check your internet connection or try using a VPN"
+            "Using fallback data sources. Please check your internet connection or try using a VPN"
         )
         st.session_state.initialized = False
         return False
+
+def fetch_crypto_data(coin: str, timeframe: str) -> pd.DataFrame:
+    """Synchronous wrapper for getting crypto data with fallback handling."""
+    try:
+        with st.spinner(f"Fetching data for {coin}..."):
+            data = get_crypto_data(coin, timeframe)
+            if not isinstance(data, pd.DataFrame):
+                data = pd.DataFrame(data)
+            
+            if not data.empty:
+                st.session_state.data_source = data.get('source', 'unknown')
+                return data
+            else:
+                show_warning(
+                    "Data Fetch Error",
+                    f"Unable to fetch data for {coin}",
+                    "Trying fallback data sources"
+                )
+                return pd.DataFrame()
+    except Exception as e:
+        logger.error(f"Error fetching crypto data: {str(e)}")
+        show_error("Data Error", str(e))
+        return pd.DataFrame()
 
 def main():
     """Main application entry point with enhanced error handling."""
@@ -112,13 +147,18 @@ def main():
             try:
                 if sidebar_config.get('selected_coins'):
                     coin = sidebar_config['selected_coins'][0]
-                    data = get_crypto_data(coin, sidebar_config['timeframe'])
+                    data = fetch_crypto_data(coin, sidebar_config['timeframe'])
                     if not data.empty:
+                        show_data_source_info(
+                            st.session_state.data_source,
+                            {"Asset": coin, "Timeframe": f"{sidebar_config['timeframe']} days"}
+                        )
                         render_prediction_section(data)
                     else:
                         show_warning(
                             "Data Unavailable",
-                            "Unable to fetch market data. Please try again later."
+                            "Unable to fetch market data. Please try again later.",
+                            "Check your internet connection or try a different asset"
                         )
                 else:
                     st.info("Please select a cryptocurrency to analyze")
@@ -144,19 +184,7 @@ def main():
         # Strategy Builder Tab
         with tabs[2]:
             try:
-                if sidebar_config.get('selected_coins'):
-                    coin = sidebar_config['selected_coins'][0]
-                    data = get_crypto_data(coin, sidebar_config['timeframe'])
-                    if not data.empty:
-                        render_prediction_section(data)
-                    else:
-                        show_warning(
-                            "Strategy Data Unavailable",
-                            "Unable to fetch data for strategy testing."
-                        )
-                else:
-                    st.info("Please select a cryptocurrency for strategy testing")
-                    
+                render_backtesting_section()
             except Exception as e:
                 show_error(
                     "Strategy Error",
