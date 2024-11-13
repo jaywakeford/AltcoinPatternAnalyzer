@@ -7,36 +7,44 @@ import logging
 import requests
 import time
 from datetime import datetime, timedelta
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Cryptocurrency symbol mapping with alternative symbols
+# Enhanced cryptocurrency symbol mapping with alternatives and fallbacks
 CRYPTO_SYMBOLS = {
     'bitcoin': {
         'primary': 'BTC/USDT',
-        'alternatives': ['BTC/USD', 'BTC/USDC']
+        'alternatives': ['BTC/USD', 'BTC/USDC'],
+        'coingecko_id': 'bitcoin'
     },
     'ethereum': {
         'primary': 'ETH/USDT',
-        'alternatives': ['ETH/USD', 'ETH/USDC']
+        'alternatives': ['ETH/USD', 'ETH/USDC'],
+        'coingecko_id': 'ethereum'
     },
     'binancecoin': {
         'primary': 'BNB/USDT',
-        'alternatives': ['BNB/USD', 'BNB/USDC']
+        'alternatives': ['BNB/USD', 'BNB/USDC'],
+        'coingecko_id': 'binancecoin'
     },
     'cardano': {
         'primary': 'ADA/USDT',
-        'alternatives': ['ADA/USD', 'ADA/USDC']
+        'alternatives': ['ADA/USD', 'ADA/USDC'],
+        'coingecko_id': 'cardano'
     },
     'solana': {
         'primary': 'SOL/USDT',
-        'alternatives': ['SOL/USD', 'SOL/USDC']
+        'alternatives': ['SOL/USD', 'SOL/USDC'],
+        'coingecko_id': 'solana'
     }
 }
 
-# Enhanced exchange configurations with regional optimization
+# Enhanced exchange configurations with improved regional optimization
 EXCHANGE_CONFIGS = {
     'kraken': {
         'rateLimit': {
@@ -59,7 +67,8 @@ EXCHANGE_CONFIGS = {
             'EU': 'eu.kraken.com',
             'UK': 'uk.kraken.com',
             'GLOBAL': 'api.kraken.com'
-        }
+        },
+        'fallback_priority': 1
     },
     'kucoin': {
         'rateLimit': {
@@ -79,23 +88,21 @@ EXCHANGE_CONFIGS = {
             'ASIA': 'api-asia.kucoin.com',
             'NA': 'api.kucoin.com',
             'GLOBAL': 'api.kucoin.com'
-        }
+        },
+        'fallback_priority': 2
     }
 }
 
 def detect_region() -> str:
-    """Enhanced region detection with better Canadian support."""
+    """Enhanced region detection with better error handling."""
     try:
-        # Check if region is already cached in session state
         if 'detected_region' in st.session_state:
             return st.session_state.detected_region
 
-        # List of geolocation services for redundancy
         services = [
             'https://ipapi.co/json/',
             'https://ip-api.com/json/',
-            'https://ipwhois.app/json/',
-            'https://geolocation-db.com/json/'
+            'https://ipwhois.app/json/'
         ]
         
         for service in services:
@@ -104,35 +111,23 @@ def detect_region() -> str:
                 if response.status_code == 200:
                     data = response.json()
                     
-                    # Extract region information with multiple field fallbacks
                     region = (
                         data.get('country_code') or 
                         data.get('countryCode') or 
-                        data.get('country_code2') or 
                         'GLOBAL'
                     )
                     
-                    continent = (
-                        data.get('continent_code') or 
-                        data.get('continentCode') or 
-                        ''
-                    )
-                    
-                    # Enhanced regional mapping with improved Canadian support
                     detected_region = 'GLOBAL'
-                    if region in ['US', 'CA']:  # Explicitly handle Canadian users
+                    if region in ['US', 'CA']:
                         detected_region = 'NA'
                         logger.info(f"North American user detected: {region}")
                     elif region in ['GB', 'IE']:
                         detected_region = 'UK'
-                    elif continent == 'EU' or region in ['CH', 'NO', 'SE', 'DK', 'FI']:
+                    elif region in ['CH', 'NO', 'SE', 'DK', 'FI'] or data.get('continent_code') == 'EU':
                         detected_region = 'EU'
-                    elif region in ['CN', 'JP', 'KR', 'SG', 'HK', 'IN', 'VN', 'ID']:
+                    elif region in ['CN', 'JP', 'KR', 'SG', 'HK', 'IN']:
                         detected_region = 'ASIA'
-                    elif region in ['AU', 'NZ']:
-                        detected_region = 'OCE'
                     
-                    # Cache the detected region
                     st.session_state.detected_region = detected_region
                     logger.info(f"Region detected: {detected_region} (Country: {region})")
                     return detected_region
@@ -142,7 +137,7 @@ def detect_region() -> str:
                 continue
                 
     except Exception as e:
-        logger.warning(f"Error detecting region: {str(e)}")
+        logger.error(f"Error detecting region: {str(e)}")
     
     return 'GLOBAL'
 
@@ -150,7 +145,6 @@ def get_optimal_exchange_config(exchange_id: str, region: str) -> Dict:
     """Get optimized exchange configuration based on region."""
     config = EXCHANGE_CONFIGS.get(exchange_id, {})
     
-    # Get region-specific settings with fallback to global
     rate_limit = (
         config.get('rateLimit', {}).get(region) or 
         config.get('rateLimit', {}).get('GLOBAL', 3000)
@@ -179,200 +173,204 @@ def get_optimal_exchange_config(exchange_id: str, region: str) -> Dict:
         }
     }
 
-def init_exchanges() -> List[ccxt.Exchange]:
-    """Initialize cryptocurrency exchanges with enhanced regional optimization."""
-    region = detect_region()
-    exchanges = []
-    errors = []
-    
-    # Sort exchanges by reliability for the region
-    sorted_exchanges = sorted(
-        EXCHANGE_CONFIGS.items(),
-        key=lambda x: (
-            x[1]['regions'].count(region) > 0,  # Prioritize region-specific exchanges
-            x[1].get('reliability', 0)  # Then by reliability
-        ),
-        reverse=True
-    )
-    
-    logger.info("Skipping Coinbase initialization - exchange removed from configuration")
-    
-    for exchange_id, config in sorted_exchanges:
-        # Skip exchanges not available in the user's region
-        if region not in config['regions'] and 'GLOBAL' not in config['regions']:
-            logger.info(f"Skipping {exchange_id} - not available in {region}")
-            continue
-            
-        try:
-            # Get optimized configuration for the region
-            exchange_config = get_optimal_exchange_config(exchange_id, region)
-            exchange_class = getattr(ccxt, exchange_id)
-            exchange = exchange_class(exchange_config)
-            
-            # Test connection with retry mechanism
-            max_retries = 3
-            retry_delay = 1
-            
-            for attempt in range(max_retries):
-                try:
-                    exchange.load_markets()
-                    # Add metadata
-                    exchange.region = region
-                    exchange.reliability = config['reliability']
-                    exchange.features = config['features']
-                    
-                    exchanges.append(exchange)
-                    logger.info(f"Successfully connected to {exchange_id}")
-                    break
-                    
-                except ccxt.ExchangeNotAvailable as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    time.sleep(retry_delay * (2 ** attempt))
-                except ccxt.AuthenticationError:
-                    # Skip retries for authentication errors
-                    raise
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise e
-                    time.sleep(retry_delay * (2 ** attempt))
-            
-        except Exception as e:
-            error_msg = f"Error initializing {exchange_id}: {str(e)}"
-            errors.append(error_msg)
-            logger.warning(error_msg)
-    
-    if not exchanges:
-        fallback_msg = (
-            f"Limited exchange access in {region}. Using alternative data sources. "
-            "This won't affect the platform's analysis capabilities."
+class ExchangeManager:
+    def __init__(self):
+        self.exchanges = {}
+        self.fallback_sources = []
+        self.region = detect_region()
+        self.connection_status = {}
+        self._initialize_exchanges()
+
+    def _initialize_exchanges(self):
+        """Initialize exchanges with enhanced error handling and fallback mechanisms."""
+        sorted_exchanges = sorted(
+            EXCHANGE_CONFIGS.items(),
+            key=lambda x: (x[1]['fallback_priority'], -x[1]['reliability'])
         )
-        logger.warning(fallback_msg)
-        st.warning(fallback_msg)
-    
-    return exchanges
 
-def get_exchange_status() -> Dict[str, Dict[str, Any]]:
-    """Get detailed status of all configured exchanges with regional considerations."""
-    status = {}
-    region = detect_region()
-    start_time = time.time()
-    
-    for exchange_id, config in EXCHANGE_CONFIGS.items():
-        try:
-            # Skip exchanges not available in the region
-            if region not in config['regions'] and 'GLOBAL' not in config['regions']:
-                status[exchange_id] = {
-                    'status': 'restricted',
-                    'reliability': config['reliability'],
+        for exchange_id, config in sorted_exchanges:
+            try:
+                if self.region not in config['regions'] and 'GLOBAL' not in config['regions']:
+                    logger.info(f"Skipping {exchange_id} - not available in {self.region}")
+                    continue
+
+                exchange_config = get_optimal_exchange_config(exchange_id, self.region)
+                exchange_class = getattr(ccxt, exchange_id)
+                exchange = exchange_class(exchange_config)
+
+                # Test connection with retry mechanism
+                self._test_exchange_connection(exchange)
+                
+                # Add metadata
+                exchange.region = self.region
+                exchange.reliability = config['reliability']
+                exchange.features = config['features']
+                
+                self.exchanges[exchange_id] = exchange
+                self.connection_status[exchange_id] = {
+                    'status': 'available',
+                    'last_checked': datetime.now(),
                     'features': config['features'],
-                    'regions': config['regions'],
-                    'error': f'Exchange not available in {region}'
+                    'reliability': config['reliability']
                 }
-                continue
-            
-            # Initialize exchange with region-specific settings
-            exchange_config = {
-                'timeout': config['timeout'],
-                'enableRateLimit': True
-            }
-            
-            if region in config['endpoints']:
-                exchange_config['hostname'] = config['endpoints'][region]
-            
-            exchange = getattr(ccxt, exchange_id)(exchange_config)
-            
-            # Test basic API functionality
-            exchange.fetch_markets()
-            
-            # Calculate response time
-            response_time = time.time() - start_time
-            
-            status[exchange_id] = {
-                'status': 'available',
-                'reliability': config['reliability'],
-                'features': config['features'],
-                'response_time': response_time,
-                'regions': config['regions'],
-                'endpoint': config['endpoints'].get(region, config['endpoints']['GLOBAL'])
-            }
-            
-        except ccxt.ExchangeNotAvailable:
-            status[exchange_id] = {
-                'status': 'unavailable',
-                'error': 'Exchange is temporarily unavailable',
-                'reliability': config['reliability'],
-                'features': config['features'],
-                'regions': config['regions']
-            }
-        except ccxt.AuthenticationError:
-            status[exchange_id] = {
-                'status': 'unavailable',
-                'error': 'Authentication required',
-                'reliability': config['reliability'],
-                'features': config['features'],
-                'regions': config['regions']
-            }
-        except Exception as e:
-            status[exchange_id] = {
-                'status': 'error',
-                'error': str(e),
-                'reliability': config['reliability'],
-                'features': config['features'],
-                'regions': config['regions']
-            }
-    
-    return status
+                
+                logger.info(f"Successfully initialized {exchange_id}")
+                
+            except Exception as e:
+                logger.warning(f"Error initializing {exchange_id}: {str(e)}")
+                self.connection_status[exchange_id] = {
+                    'status': 'unavailable',
+                    'last_checked': datetime.now(),
+                    'error': str(e)
+                }
 
-@st.cache_data(ttl=300)
-def get_crypto_data(coin_id: str, days: str = '30') -> pd.DataFrame:
-    """Fetch cryptocurrency data with enhanced error handling and fallback mechanisms."""
+        # Initialize fallback sources
+        self._initialize_fallback_sources()
+
+    def _test_exchange_connection(self, exchange, max_retries=3):
+        """Test exchange connection with retry mechanism."""
+        retry_delay = 1
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                exchange.load_markets()
+                return True
+            except ccxt.NetworkError as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (2 ** attempt))
+                continue
+            except Exception as e:
+                raise e
+
+        if last_error:
+            raise last_error
+
+    def _initialize_fallback_sources(self):
+        """Initialize fallback data sources."""
+        try:
+            cg = CoinGeckoAPI()
+            cg.ping()  # Test connection
+            self.fallback_sources.append(('coingecko', cg))
+            logger.info("Successfully initialized CoinGecko as fallback source")
+        except Exception as e:
+            logger.warning(f"Error initializing CoinGecko: {str(e)}")
+
+    async def get_market_data(self, symbol: str, timeframe: str = '1d', limit: int = 30):
+        """Get market data with enhanced fallback mechanism."""
+        errors = []
+        
+        # Try primary exchanges first
+        for exchange_id, exchange in self.exchanges.items():
+            try:
+                if self.connection_status[exchange_id]['status'] == 'available':
+                    data = await self._fetch_market_data(exchange, symbol, timeframe, limit)
+                    if data is not None:
+                        return data, exchange_id
+            except Exception as e:
+                errors.append(f"{exchange_id}: {str(e)}")
+                continue
+
+        # Try fallback sources if primary exchanges fail
+        for source_name, source in self.fallback_sources:
+            try:
+                if source_name == 'coingecko':
+                    data = self._fetch_coingecko_data(symbol, limit)
+                    if data is not None:
+                        return data, 'coingecko'
+            except Exception as e:
+                errors.append(f"{source_name}: {str(e)}")
+                continue
+
+        raise Exception(f"Failed to fetch market data. Errors: {'; '.join(errors)}")
+
+    async def _fetch_market_data(self, exchange, symbol: str, timeframe: str, limit: int):
+        """Fetch market data from exchange with timeout handling."""
+        try:
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor() as pool:
+                data = await loop.run_in_executor(
+                    pool,
+                    partial(exchange.fetch_ohlcv, symbol, timeframe, limit=limit)
+                )
+                return pd.DataFrame(
+                    data,
+                    columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                )
+        except Exception as e:
+            logger.warning(f"Error fetching data from {exchange.id}: {str(e)}")
+            return None
+
+    def _fetch_coingecko_data(self, symbol: str, days: int) -> pd.DataFrame:
+        """Fetch data from CoinGecko."""
+        try:
+            coin_id = next(
+                (v['coingecko_id'] for k, v in CRYPTO_SYMBOLS.items() 
+                 if v['primary'].startswith(symbol.split('/')[0])),
+                None
+            )
+            if not coin_id:
+                raise ValueError(f"No CoinGecko ID found for symbol {symbol}")
+
+            source = self.fallback_sources[0][1]  # CoinGecko instance
+            data = source.get_coin_market_chart_by_id(
+                id=coin_id,
+                vs_currency='usd',
+                days=days
+            )
+
+            if data:
+                df = pd.DataFrame(data['prices'], columns=['timestamp', 'close'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('timestamp', inplace=True)
+                return df
+
+        except Exception as e:
+            logger.error(f"Error fetching data from CoinGecko: {str(e)}")
+            return None
+
+    def get_exchange_status(self) -> Dict[str, Dict[str, Any]]:
+        """Get detailed status of all exchanges."""
+        current_time = datetime.now()
+        status_update = {}
+
+        for exchange_id, exchange in self.exchanges.items():
+            try:
+                if (current_time - self.connection_status[exchange_id]['last_checked']).total_seconds() > 300:
+                    # Test connection if last check was more than 5 minutes ago
+                    self._test_exchange_connection(exchange)
+                    self.connection_status[exchange_id]['last_checked'] = current_time
+                    self.connection_status[exchange_id]['status'] = 'available'
+            except Exception as e:
+                self.connection_status[exchange_id].update({
+                    'status': 'unavailable',
+                    'last_checked': current_time,
+                    'error': str(e)
+                })
+
+            status_update[exchange_id] = self.connection_status[exchange_id]
+
+        return status_update
+
+# Export singleton instance
+exchange_manager = ExchangeManager()
+
+async def get_crypto_data(coin_id: str, days: str = '30') -> pd.DataFrame:
+    """Fetch cryptocurrency data with enhanced fallback mechanism."""
     try:
         symbols = CRYPTO_SYMBOLS.get(coin_id.lower())
         if not symbols:
             raise ValueError(f"Unsupported cryptocurrency: {coin_id}")
-        
-        if not hasattr(st.session_state, 'exchanges'):
-            st.session_state.exchanges = init_exchanges()
-        
-        # Try each exchange in order of reliability
-        for exchange in sorted(st.session_state.exchanges, key=lambda x: x.reliability, reverse=True):
-            for symbol in [symbols['primary']] + symbols['alternatives']:
-                try:
-                    ohlcv = exchange.fetch_ohlcv(
-                        symbol,
-                        '1d',
-                        limit=int(days)
-                    )
-                    if ohlcv:
-                        df = pd.DataFrame(
-                            ohlcv,
-                            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                        )
-                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                        df.set_index('timestamp', inplace=True)
-                        df['price'] = df['close']
-                        df['exchange'] = exchange.id
-                        return df
-                except Exception as e:
-                    logger.warning(f"Error fetching {symbol} from {exchange.id}: {str(e)}")
-                    continue
-        
-        # Fallback to CoinGecko
-        logger.info("Falling back to CoinGecko API")
-        cg = CoinGeckoAPI()
-        data = cg.get_coin_market_chart_by_id(
-            id=coin_id.lower(),
-            vs_currency='usd',
-            days=int(days)
+
+        data, source = await exchange_manager.get_market_data(
+            symbols['primary'],
+            limit=int(days)
         )
         
-        if data:
-            df = pd.DataFrame(data['prices'], columns=['timestamp', 'price'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
-            df['exchange'] = 'coingecko'
-            return df
+        if data is not None:
+            data['source'] = source
+            return data
             
     except Exception as e:
         logger.error(f"Error fetching data: {str(e)}")
@@ -380,38 +378,6 @@ def get_crypto_data(coin_id: str, days: str = '30') -> pd.DataFrame:
     
     return pd.DataFrame()
 
-def get_bitcoin_dominance(timeframe: str) -> pd.DataFrame:
-    """Get Bitcoin dominance data with improved error handling."""
-    try:
-        cg = CoinGeckoAPI()
-        days = int(timeframe) if timeframe.isdigit() else 30
-        
-        data = retry_api_call(
-            lambda: cg.get_global_market_chart(vs_currency='usd', days=days)
-        )
-        
-        if data and 'market_cap_percentage' in data:
-            df = pd.DataFrame({
-                'timestamp': [pd.to_datetime(ts, unit='ms') for ts, _ in data['market_cap_percentage']],
-                'btc_dominance': [v for _, v in data['market_cap_percentage']]
-            })
-            df.set_index('timestamp', inplace=True)
-            return df
-            
-    except Exception as e:
-        logger.error(f"Error fetching Bitcoin dominance: {str(e)}")
-        st.error(f"Error fetching dominance data: {str(e)}")
-    
-    return pd.DataFrame()
-
-def retry_api_call(func, max_retries=3, delay=1):
-    """Retry API calls with exponential backoff."""
-    for attempt in range(max_retries):
-        try:
-            return func()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            time.sleep(delay * (2 ** attempt))
-            continue
-    return None
+def get_exchange_status() -> Dict[str, Dict[str, Any]]:
+    """Get detailed status of all exchanges."""
+    return exchange_manager.get_exchange_status()

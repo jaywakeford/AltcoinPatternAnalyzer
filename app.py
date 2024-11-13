@@ -3,7 +3,7 @@ import pandas as pd
 from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
 from components.predictions import render_prediction_section
-from utils.data_fetcher import init_exchanges, get_crypto_data, get_exchange_status, detect_region
+from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region, exchange_manager
 from utils.ui_components import show_error, show_warning
 import logging
 
@@ -25,8 +25,6 @@ def initialize_session_state():
     try:
         if 'initialized' not in st.session_state:
             st.session_state.initialized = False
-        if 'exchanges' not in st.session_state:
-            st.session_state.exchanges = None
         if 'exchange_status' not in st.session_state:
             st.session_state.exchange_status = None
         if 'error_shown' not in st.session_state:
@@ -51,21 +49,11 @@ def initialize_exchanges():
     """Initialize exchanges with proper error handling and retry logic."""
     try:
         with st.spinner("Connecting to exchanges..."):
-            # Initialize exchanges with current region
-            exchanges = init_exchanges()
-            if not exchanges:
-                show_warning(
-                    "Limited Exchange Access",
-                    "Unable to connect to primary exchanges. Using fallback data sources."
-                )
-                return False
-            
             # Get exchange status
             exchange_status = get_exchange_status()
             available_count = len([x for x in exchange_status.values() if x['status'] == 'available'])
             
             # Update session state
-            st.session_state.exchanges = exchanges
             st.session_state.exchange_status = exchange_status
             st.session_state.initialized = True
             
