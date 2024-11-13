@@ -20,7 +20,7 @@ class StrategyBuilder:
                 }
             }
         
-        # Initialize templates with improved descriptions
+        # Initialize templates
         self.templates = {
             "Moving Average Crossover": {
                 "name": "Moving Average Crossover Strategy",
@@ -31,6 +31,7 @@ class StrategyBuilder:
                 - Recommended for: Trending markets
                 """,
                 "config": {
+                    "strategy_type": "trend_following",
                     "entry_conditions": ["SMA50 crosses above SMA200"],
                     "exit_conditions": ["SMA50 crosses below SMA200"],
                     "position_size": 10.0,
@@ -48,6 +49,7 @@ class StrategyBuilder:
                 - Recommended for: Range-bound markets
                 """,
                 "config": {
+                    "strategy_type": "mean_reversion",
                     "entry_conditions": ["RSI below 30"],
                     "exit_conditions": ["RSI above 70"],
                     "position_size": 10.0,
@@ -57,180 +59,98 @@ class StrategyBuilder:
                 }
             }
         }
-        
-        # Technical indicators with descriptions
-        self.indicators = {
-            'Moving Average': {
-                'indicators': ['SMA', 'EMA', 'WMA'],
-                'description': 'Trend-following indicators that smooth price action'
-            },
-            'Momentum': {
-                'indicators': ['RSI', 'MACD', 'Stochastic'],
-                'description': 'Indicators that measure the strength of price movement'
-            },
-            'Volume': {
-                'indicators': ['OBV', 'Volume Profile', 'VWAP'],
-                'description': 'Indicators that analyze trading volume patterns'
-            },
-            'Volatility': {
-                'indicators': ['Bollinger Bands', 'ATR', 'Keltner Channels'],
-                'description': 'Indicators that measure market volatility'
-            }
-        }
 
     def render(self) -> Optional[Tuple[Dict, Dict]]:
-        """Render strategy builder interface with improved visibility and feedback."""
+        """Render strategy builder interface."""
         try:
-            with st.spinner("Initializing Strategy Builder..."):
-                # Main container with improved styling
-                st.markdown("""
-                <style>
-                .strategy-container {
-                    background-color: rgba(255, 255, 255, 0.05);
-                    border-radius: 10px;
-                    padding: 20px;
-                    margin: 10px 0;
-                }
-                .method-selector {
-                    background-color: rgba(255, 255, 255, 0.1);
-                    padding: 15px;
-                    border-radius: 5px;
-                    margin-bottom: 20px;
-                }
-                </style>
-                """, unsafe_allow_html=True)
+            st.markdown("### 🛠️ Strategy Builder")
+            
+            # Method selector
+            input_method = st.radio(
+                "Strategy Input Method",
+                ["Natural Language", "Template", "Manual Builder"],
+                horizontal=True,
+                help="Choose how you want to create your strategy"
+            )
+            
+            # Add spacing
+            st.markdown("<div style='margin: 1em 0;'></div>", unsafe_allow_html=True)
+            
+            # Update session state
+            st.session_state.strategy_state['input_method'] = input_method
 
-                # Method selector with improved visibility
-                st.markdown('<div class="method-selector">', unsafe_allow_html=True)
-                input_method = st.radio(
-                    "Strategy Input Method",
-                    ["Natural Language", "Template", "Manual Builder"],
-                    help="Choose how you want to create your strategy",
-                    index=["Natural Language", "Template", "Manual Builder"].index(
-                        st.session_state.strategy_state['input_method']
-                    )
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
+            strategy_config = None
+            if input_method == "Natural Language":
+                strategy_config = self._render_natural_language_input()
+            elif input_method == "Template":
+                strategy_config = self._render_template_selection()
+            else:
+                strategy_config = self._render_manual_builder()
 
-                # Update session state
-                st.session_state.strategy_state['input_method'] = input_method
+            if strategy_config:
+                backtest_config = self._render_backtest_config()
+                if backtest_config:
+                    return strategy_config, backtest_config
 
-                strategy_config = None
-                if input_method == "Natural Language":
-                    strategy_config = self._render_natural_language_input()
-                elif input_method == "Template":
-                    strategy_config = self._render_template_selection()
-                else:
-                    strategy_config = self._render_manual_builder()
-
-                if strategy_config:
-                    st.success("✅ Strategy configured successfully!")
-                    backtest_config = self._render_backtest_config()
-                    if backtest_config:
-                        return strategy_config, backtest_config
-
-                return None
+            return None
 
         except Exception as e:
             show_error(
                 "Strategy Builder Error",
                 str(e),
-                "Please try refreshing the page or contact support if the issue persists."
+                "Please try refreshing the page or contact support."
             )
             return None
 
     def _render_natural_language_input(self) -> Optional[Dict]:
-        """Render natural language input section with improved guidance."""
+        """Render natural language input section."""
         with st.container():
             st.markdown("""
-            <div style='background-color: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;'>
-                <h4 style='margin-top: 0;'>Strategy Description Guidelines</h4>
-                <p>Include the following in your description:</p>
-                <ul>
-                    <li>Entry Conditions (e.g., "Buy when RSI below 30")</li>
-                    <li>Exit Conditions (e.g., "Sell when price hits take profit")</li>
-                    <li>Position Size (e.g., "Use 10% of capital")</li>
-                    <li>Risk Management (e.g., "5% stop loss, 15% take profit")</li>
-                    <li>Optional: Timeframe and additional indicators</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            ### Strategy Description Guidelines
+            Describe your trading strategy in plain English. Include:
+
+            **Required Information:**
+            - Entry Conditions (e.g., "Buy when 50-day SMA crosses above 200-day SMA")
+            - Exit Conditions (e.g., "Sell when RSI goes above 70")
+            - Position Size (e.g., "Use 30% position size")
+            - Risk Management (e.g., "Set stop loss at 5% and take profit at 15%")
+
+            **Optional Information:**
+            - Timeframe (e.g., "Use 4-hour timeframe")
+            - Additional Indicators (e.g., "Monitor volume for confirmation")
+            - Market Phase Filters (e.g., "Only trade during uptrend")
+            """)
 
             description = st.text_area(
                 "Strategy Description",
                 value=st.session_state.strategy_state.get('description', ''),
-                height=300,
-                help="Write your strategy in natural language"
+                height=200,
+                help="Describe your trading strategy in detail"
             )
 
             # Update session state
             st.session_state.strategy_state['description'] = description
 
             if description:
-                if st.button("Parse Strategy", use_container_width=True):
-                    with st.spinner("Parsing strategy..."):
-                        try:
-                            strategy = self._parse_strategy_text(description)
-                            if strategy:
-                                st.success("Strategy parsed successfully!")
-                                self._display_strategy_summary(strategy)
-                                return strategy
-                        except Exception as e:
-                            show_error(
-                                "Strategy Parsing Error",
-                                str(e),
-                                "Please check your strategy description format and try again."
-                            )
-            return None
-
-    def _render_template_selection(self) -> Optional[Dict]:
-        """Render template selection with improved visualization."""
-        with st.container():
-            # Template showcase with cards
-            st.markdown("""
-            <style>
-            .template-card {
-                background-color: rgba(255, 255, 255, 0.05);
-                border-radius: 5px;
-                padding: 15px;
-                margin: 10px 0;
-            }
-            .template-title {
-                color: #FF4B4B;
-                margin-bottom: 10px;
-            }
-            .template-description {
-                font-size: 0.9em;
-                margin-bottom: 15px;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-
-            selected = st.selectbox(
-                "Select Strategy Template",
-                list(self.templates.keys()),
-                help="Choose a pre-built strategy template"
-            )
-
-            if selected:
-                template = self.templates[selected]
-                st.markdown(f"""
-                <div class="template-card">
-                    <div class="template-title">{template['name']}</div>
-                    <div class="template-description">{template['description']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                if st.button("Use This Template", use_container_width=True):
-                    with st.spinner("Loading template..."):
-                        strategy = template['config']
-                        self._display_strategy_summary(strategy)
-                        return strategy
+                if st.button("Parse Strategy", type="primary"):
+                    try:
+                        strategy = self._parse_strategy_text(description)
+                        if strategy:
+                            st.success("Strategy parsed successfully!")
+                            self._display_strategy_summary(strategy)
+                            return strategy
+                    except Exception as e:
+                        show_error(
+                            "Strategy Parsing Error",
+                            str(e),
+                            "Please check your strategy description format."
+                        )
             return None
 
     def _parse_strategy_text(self, text: str) -> Dict:
         """Parse strategy description from natural language text."""
         strategy = {
+            "strategy_type": "custom",
             "entry_conditions": [],
             "exit_conditions": [],
             "position_size": None,
@@ -261,225 +181,204 @@ class StrategyBuilder:
             strategy["timeframe"] = f"{value}{unit}"
             
         # Extract entry conditions
-        entry_section = re.search(r'entry conditions?:(.+?)(?=exit conditions?:|$)', text, re.DOTALL | re.IGNORECASE)
+        entry_section = re.search(r'entry conditions?:(.+?)(?=exit conditions?:|$)', 
+                                text, re.DOTALL | re.IGNORECASE)
         if entry_section:
             conditions = entry_section.group(1).strip().split('\n')
             strategy["entry_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
             
         # Extract exit conditions
-        exit_section = re.search(r'exit conditions?:(.+?)(?=position size:|$)', text, re.DOTALL | re.IGNORECASE)
+        exit_section = re.search(r'exit conditions?:(.+?)(?=position size:|$)', 
+                                text, re.DOTALL | re.IGNORECASE)
         if exit_section:
             conditions = exit_section.group(1).strip().split('\n')
             strategy["exit_conditions"] = [cond.strip() for cond in conditions if cond.strip()]
         
+        # Validate required fields
+        if not strategy["entry_conditions"]:
+            raise ValueError("Entry conditions are required")
+        if not strategy["exit_conditions"]:
+            raise ValueError("Exit conditions are required")
+        if not strategy["position_size"]:
+            raise ValueError("Position size is required")
+        
         return strategy
 
-    def _render_manual_builder(self) -> Optional[Dict]:
-        """Render manual strategy builder with improved organization and feedback."""
+    def _render_template_selection(self) -> Optional[Dict]:
+        """Render template selection."""
         with st.container():
-            # Basic Settings
-            with group_elements("Basic Settings"):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    position_size = st.number_input(
-                        "Position Size (%)",
-                        min_value=1,
-                        max_value=100,
-                        value=st.session_state.strategy_state['manual_config']['position_size'],
-                        help="Percentage of capital to use per trade"
-                    )
-                    stop_loss = st.number_input(
-                        "Stop Loss (%)",
-                        min_value=1,
-                        max_value=50,
-                        value=st.session_state.strategy_state['manual_config']['stop_loss'],
-                        help="Stop loss percentage below entry price"
-                    )
-                
-                with col2:
-                    take_profit = st.number_input(
-                        "Take Profit (%)",
-                        min_value=1,
-                        max_value=100,
-                        value=st.session_state.strategy_state['manual_config']['take_profit'],
-                        help="Take profit percentage above entry price"
-                    )
-                    timeframe = st.selectbox(
-                        "Timeframe",
-                        ["1m", "5m", "15m", "1h", "4h", "1d"],
-                        index=["1m", "5m", "15m", "1h", "4h", "1d"].index(
-                            st.session_state.strategy_state['manual_config']['timeframe']
-                        ),
-                        help="Chart timeframe for the strategy"
-                    )
+            selected = st.selectbox(
+                "Select Strategy Template",
+                list(self.templates.keys()),
+                help="Choose a pre-built strategy template"
+            )
 
-                # Update session state
-                st.session_state.strategy_state['manual_config'].update({
-                    'position_size': position_size,
-                    'stop_loss': stop_loss,
-                    'take_profit': take_profit,
-                    'timeframe': timeframe
-                })
+            if selected:
+                template = self.templates[selected]
+                st.markdown(f"""
+                ### {template['name']}
+                {template['description']}
+                """)
 
-            # Trading Rules
-            with group_elements("Trading Rules"):
-                # Entry Conditions
-                st.subheader("Entry Conditions")
-                entry_conditions = []
-                
-                indicator_type = st.selectbox(
-                    "Indicator Type",
-                    list(self.indicators.keys()),
-                    key="entry_indicator_type"
-                )
-                
-                if indicator_type:
-                    st.markdown(f"*{self.indicators[indicator_type]['description']}*")
-                    selected_indicator = st.selectbox(
-                        "Select Indicator",
-                        self.indicators[indicator_type]['indicators'],
-                        key="entry_indicator"
-                    )
-                    if selected_indicator:
-                        entry_conditions.append(f"Using {selected_indicator}")
-                
-                # Exit Conditions
-                st.subheader("Exit Conditions")
-                exit_conditions = []
-                
-                indicator_type = st.selectbox(
-                    "Indicator Type",
-                    list(self.indicators.keys()),
-                    key="exit_indicator_type"
-                )
-                
-                if indicator_type:
-                    st.markdown(f"*{self.indicators[indicator_type]['description']}*")
-                    selected_indicator = st.selectbox(
-                        "Select Indicator",
-                        self.indicators[indicator_type]['indicators'],
-                        key="exit_indicator"
-                    )
-                    if selected_indicator:
-                        exit_conditions.append(f"Using {selected_indicator}")
-
-            if st.button("Create Strategy", use_container_width=True):
-                with st.spinner("Creating strategy..."):
-                    if not entry_conditions:
-                        show_error(
-                            "Invalid Strategy",
-                            "Entry conditions are required",
-                            "Please select at least one entry condition"
-                        )
-                        return None
-                        
-                    if not exit_conditions:
-                        show_error(
-                            "Invalid Strategy",
-                            "Exit conditions are required",
-                            "Please select at least one exit condition"
-                        )
-                        return None
-                    
-                    strategy = {
-                        "entry_conditions": entry_conditions,
-                        "exit_conditions": exit_conditions,
-                        "position_size": position_size,
-                        "stop_loss": stop_loss,
-                        "take_profit": take_profit,
-                        "timeframe": timeframe
-                    }
-                    
+                if st.button("Use This Template", type="primary"):
+                    strategy = template['config']
                     self._display_strategy_summary(strategy)
                     return strategy
             return None
 
-    def _render_backtest_config(self) -> Optional[Dict]:
-        """Render backtesting configuration with improved layout."""
-        with group_elements("Backtest Configuration"):
+    def _render_manual_builder(self) -> Optional[Dict]:
+        """Render manual strategy builder."""
+        with st.container():
+            # Basic Settings
+            st.subheader("Basic Settings")
             col1, col2 = st.columns(2)
             
             with col1:
-                asset = st.selectbox(
-                    "Asset",
-                    ["BTC/USDT", "ETH/USDT", "SOL/USDT", "ADA/USDT"],
-                    help="Select the asset to backtest"
+                position_size = st.number_input(
+                    "Position Size (%)",
+                    min_value=1,
+                    max_value=100,
+                    value=st.session_state.strategy_state['manual_config']['position_size'],
+                    help="Percentage of capital to use per trade"
                 )
-                
-                initial_capital = st.number_input(
-                    "Initial Capital (USDT)",
-                    min_value=100,
-                    value=10000,
-                    step=100,
-                    help="Starting capital for backtesting"
+                stop_loss = st.number_input(
+                    "Stop Loss (%)",
+                    min_value=1,
+                    max_value=50,
+                    value=st.session_state.strategy_state['manual_config']['stop_loss'],
+                    help="Price distance for stop loss"
                 )
             
             with col2:
-                start_date = st.date_input(
-                    "Start Date",
-                    help="Backtest start date"
+                take_profit = st.number_input(
+                    "Take Profit (%)",
+                    min_value=1,
+                    max_value=100,
+                    value=st.session_state.strategy_state['manual_config']['take_profit'],
+                    help="Price distance for take profit"
                 )
-                
-                end_date = st.date_input(
-                    "End Date",
-                    help="Backtest end date"
+                timeframe = st.selectbox(
+                    "Timeframe",
+                    ["1m", "5m", "15m", "1h", "4h", "1d"],
+                    index=["1m", "5m", "15m", "1h", "4h", "1d"].index(
+                        st.session_state.strategy_state['manual_config']['timeframe']
+                    ),
+                    help="Chart timeframe for analysis"
                 )
-            
-            if asset and initial_capital and start_date and end_date:
-                if isinstance(start_date, datetime):
-                    start_date = start_date.date()
-                if isinstance(end_date, datetime):
-                    end_date = end_date.date()
-                
-                if start_date >= end_date:
+
+            # Update session state
+            st.session_state.strategy_state['manual_config'].update({
+                'position_size': position_size,
+                'stop_loss': stop_loss,
+                'take_profit': take_profit,
+                'timeframe': timeframe
+            })
+
+            # Strategy Type
+            strategy_type = st.selectbox(
+                "Strategy Type",
+                ["trend_following", "mean_reversion", "breakout"],
+                help="Choose your strategy type"
+            )
+
+            # Entry Conditions
+            entry_conditions = []
+            st.markdown("#### Entry Conditions")
+            entry_condition = st.text_area(
+                "Enter your entry conditions",
+                height=100,
+                help="Describe when to enter a trade"
+            )
+            if entry_condition:
+                entry_conditions.append(entry_condition)
+
+            # Exit Conditions
+            exit_conditions = []
+            st.markdown("#### Exit Conditions")
+            exit_condition = st.text_area(
+                "Enter your exit conditions",
+                height=100,
+                help="Describe when to exit a trade"
+            )
+            if exit_condition:
+                exit_conditions.append(exit_condition)
+
+            if st.button("Create Strategy", type="primary"):
+                if not entry_conditions:
                     show_error(
-                        "Invalid Date Range",
-                        "Start date must be before end date",
-                        "Please adjust your date selection"
+                        "Invalid Strategy",
+                        "Entry conditions are required"
                     )
                     return None
                     
-                return {
-                    "asset": asset,
-                    "initial_capital": initial_capital,
-                    "start_date": start_date,
-                    "end_date": end_date
+                if not exit_conditions:
+                    show_error(
+                        "Invalid Strategy",
+                        "Exit conditions are required"
+                    )
+                    return None
+                
+                strategy = {
+                    "strategy_type": strategy_type,
+                    "entry_conditions": entry_conditions,
+                    "exit_conditions": exit_conditions,
+                    "position_size": position_size,
+                    "stop_loss": stop_loss,
+                    "take_profit": take_profit,
+                    "timeframe": timeframe
                 }
-            return None
+                
+                self._display_strategy_summary(strategy)
+                return strategy
+
+        return None
+
+    def _render_backtest_config(self) -> Dict:
+        """Render backtesting configuration section."""
+        st.markdown("### 📊 Backtest Configuration")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            asset = st.selectbox(
+                "Asset",
+                ["BTC/USDT", "ETH/USDT", "BNB/USDT"],
+                help="Select the trading pair"
+            )
+        
+        with col2:
+            initial_capital = st.number_input(
+                "Initial Capital (USD)",
+                min_value=100,
+                value=10000,
+                step=100,
+                help="Starting capital for backtesting"
+            )
+        
+        return {
+            "asset": asset,
+            "initial_capital": initial_capital
+        }
 
     def _display_strategy_summary(self, strategy: Dict):
-        """Display strategy summary with improved formatting."""
-        with group_elements("Strategy Summary"):
-            st.markdown("""
-            <style>
-            .strategy-param {
-                background-color: rgba(255, 255, 255, 0.05);
-                padding: 10px;
-                border-radius: 5px;
-                margin: 5px 0;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="strategy-param">', unsafe_allow_html=True)
+        """Display strategy configuration summary."""
+        st.markdown("### Strategy Summary")
+        
+        if strategy.get("entry_conditions"):
             st.markdown("#### Entry Conditions")
             for condition in strategy["entry_conditions"]:
-                st.markdown(f"• {condition}")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown('<div class="strategy-param">', unsafe_allow_html=True)
+                st.markdown(f"- {condition}")
+                
+        if strategy.get("exit_conditions"):
             st.markdown("#### Exit Conditions")
             for condition in strategy["exit_conditions"]:
-                st.markdown(f"• {condition}")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Position Size", f"{strategy['position_size']}%")
-            with col2:
-                st.metric("Stop Loss", f"{strategy['stop_loss']}%")
-            with col3:
-                st.metric("Take Profit", f"{strategy['take_profit']}%")
-            
-            st.metric("Timeframe", strategy['timeframe'])
+                st.markdown(f"- {condition}")
+        
+        # Display metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Position Size", f"{strategy.get('position_size', 0)}%")
+        with col2:
+            st.metric("Stop Loss", f"{strategy.get('stop_loss', 0)}%")
+        with col3:
+            st.metric("Take Profit", f"{strategy.get('take_profit', 0)}%")
