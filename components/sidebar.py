@@ -5,6 +5,21 @@ import pytz
 from utils.data_fetcher import get_exchange_status, detect_region
 from utils.ui_components import show_error, show_warning, show_exchange_status
 
+def get_exchange_config() -> Dict[str, Any]:
+    """Get exchange configuration and status."""
+    try:
+        exchange_status = get_exchange_status()
+        if exchange_status:
+            return {
+                'status': exchange_status,
+                'region': st.session_state.get('selected_region', detect_region()),
+                'timezone': st.session_state.get('selected_timezone', 'UTC')
+            }
+        return {}
+    except Exception as e:
+        show_error("Exchange Configuration Error", str(e))
+        return {}
+
 def render_sidebar() -> Optional[Dict[str, Any]]:
     """
     Render the sidebar with enhanced filtering options and exchange status.
@@ -160,21 +175,3 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
         show_error("Sidebar Error", str(e))
         st.sidebar.warning("Some features may be limited. Please refresh the page.")
         return None
-
-def get_exchange_config() -> Dict[str, Any]:
-    """Get exchange configuration and status."""
-    try:
-        exchange_status = get_exchange_status()
-        if exchange_status:
-            return {
-                'status': exchange_status,
-                'region': st.session_state.get('selected_region', detect_region()),
-                'timezone': st.session_state.get('selected_timezone', 'UTC')
-            }
-        return {}
-    except Exception as e:
-        show_error("Exchange Configuration Error", str(e))
-        return {}
-
-# Export the functions
-__all__ = ['render_sidebar', 'get_exchange_config']

@@ -190,12 +190,103 @@ class AltcoinAnalyzer:
             if not historical_data:
                 raise ValueError("No historical data available for analysis")
             
-            return self._calculate_sequence_metrics(historical_data)
+            sequence_metrics = self._calculate_sequence_metrics(historical_data)
+            
+            # Add investment sequence and exit strategy data
+            sequence_metrics['investment_sequence'] = self._calculate_investment_sequence(df, historical_data)
+            sequence_metrics['exit_strategy'] = self._calculate_exit_strategy(df, historical_data)
+            
+            return sequence_metrics
             
         except Exception as e:
             logger.error(f"Error in historical sequence analysis: {str(e)}")
             st.error("Unable to complete historical analysis. Please try again later.")
             return {}
+
+    def _calculate_investment_sequence(self, df: pd.DataFrame, historical_data: Dict) -> Dict:
+        """Calculate optimal investment sequence based on historical patterns."""
+        investment_sequence = {
+            'Phase 1': [],
+            'Phase 2': [],
+            'Phase 3': []
+        }
+        
+        try:
+            # Group coins by market cap category
+            for _, coin in df.iterrows():
+                momentum_score = self._calculate_coin_momentum(historical_data.get(coin['symbol'], pd.DataFrame()))
+                if coin['category'] == 'Large Cap' and momentum_score > 0:
+                    investment_sequence['Phase 1'].append(coin['symbol'])
+                elif coin['category'] == 'Mid Cap' and momentum_score > -10:
+                    investment_sequence['Phase 2'].append(coin['symbol'])
+                elif momentum_score > -20:
+                    investment_sequence['Phase 3'].append(coin['symbol'])
+            
+            # Limit each phase to top 5 coins
+            for phase in investment_sequence:
+                investment_sequence[phase] = investment_sequence[phase][:5]
+                
+        except Exception as e:
+            logger.error(f"Error calculating investment sequence: {str(e)}")
+            
+        return investment_sequence
+
+    def _calculate_exit_strategy(self, df: pd.DataFrame, historical_data: Dict) -> Dict:
+        """Calculate exit strategies for different market categories."""
+        exit_strategies = {
+            'Large Cap Strategy': 'Exit 25% at 20% gain, 50% at 35% gain, remaining at 50% gain',
+            'Mid Cap Strategy': 'Exit 33% at 40% gain, 33% at 75% gain, remaining at 100% gain',
+            'Small Cap Strategy': 'Exit 50% at 100% gain, remaining at 200% gain or -25% loss'
+        }
+        
+        try:
+            # Add dynamic strategy adjustments based on current market conditions
+            volatility = self._calculate_market_volatility(historical_data)
+            if volatility > 0.5:  # High volatility
+                exit_strategies['Market Condition'] = 'High volatility - Consider tighter stops'
+            else:
+                exit_strategies['Market Condition'] = 'Normal volatility - Standard exit plans'
+                
+        except Exception as e:
+            logger.error(f"Error calculating exit strategies: {str(e)}")
+            
+        return exit_strategies
+
+    def _calculate_coin_momentum(self, df: pd.DataFrame) -> float:
+        """Calculate momentum score for a coin."""
+        try:
+            if df.empty:
+                return 0
+            
+            close_prices = pd.to_numeric(df['close'], errors='coerce')
+            if close_prices.isnull().all():
+                return 0
+                
+            momentum = (
+                (close_prices.iloc[-1] - close_prices.iloc[0]) / 
+                close_prices.iloc[0] * 100
+            )
+            
+            return momentum
+            
+        except Exception:
+            return 0
+
+    def _calculate_market_volatility(self, historical_data: Dict) -> float:
+        """Calculate overall market volatility."""
+        try:
+            volatilities = []
+            for symbol, df in historical_data.items():
+                if not df.empty:
+                    close_prices = pd.to_numeric(df['close'], errors='coerce')
+                    if not close_prices.isnull().all():
+                        volatility = close_prices.pct_change().std()
+                        volatilities.append(volatility)
+            
+            return np.mean(volatilities) if volatilities else 0
+            
+        except Exception:
+            return 0
 
     def analyze_btc_correlation(self, timeframe: str = '1d', lookback_days: int = 90) -> Dict:
         """Analyze correlation between BTC cooling periods and alt movements."""
