@@ -1,12 +1,29 @@
 import streamlit as st
 from typing import Dict, Any, Optional
-from utils.data_fetcher import get_exchange_status, detect_region
 from datetime import datetime
 import pytz
+from utils.data_fetcher import get_exchange_status, detect_region
+from utils.ui_components import show_error, show_warning, show_exchange_status
+
+def get_exchange_config() -> Dict[str, Any]:
+    """Get exchange configuration and status."""
+    try:
+        exchange_status = get_exchange_status()
+        if exchange_status:
+            return {
+                'status': exchange_status,
+                'region': st.session_state.get('selected_region', detect_region()),
+                'timezone': st.session_state.get('selected_timezone', 'UTC')
+            }
+        return {}
+    except Exception as e:
+        show_error("Exchange Configuration Error", str(e))
+        return {}
 
 def render_sidebar() -> Optional[Dict[str, Any]]:
     """
     Render the sidebar with enhanced filtering options and exchange status.
+    Returns configuration dictionary or None if error occurs.
     """
     try:
         st.sidebar.title("Analysis Settings")
@@ -29,13 +46,14 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
                 'GLOBAL': 'Global'
             }
             
-            st.session_state.selected_region = st.selectbox(
+            selected_region = st.selectbox(
                 "Select Region",
                 options=list(regions.keys()),
                 format_func=lambda x: regions[x],
                 index=list(regions.keys()).index(st.session_state.selected_region),
                 help="Choose your trading region"
             )
+            st.session_state.selected_region = selected_region
             
             # Timezone selection
             common_timezones = [
@@ -51,74 +69,33 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
                 'Australia/Sydney'
             ]
             
-            timezone_index = 0
+            timezone_index = common_timezones.index('UTC')
             if st.session_state.selected_timezone in common_timezones:
                 timezone_index = common_timezones.index(st.session_state.selected_timezone)
             
-            st.session_state.selected_timezone = st.selectbox(
+            selected_timezone = st.selectbox(
                 "Select Timezone",
                 options=common_timezones,
                 index=timezone_index,
                 help="Choose your preferred timezone"
             )
+            st.session_state.selected_timezone = selected_timezone
             
             # Display current time in selected timezone
             try:
-                current_time = datetime.now(pytz.timezone(st.session_state.selected_timezone))
+                tz = pytz.timezone(selected_timezone)
+                current_time = datetime.now(tz)
                 st.info(f"Current Time: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
             except Exception as e:
                 st.warning(f"Error setting timezone: {str(e)}. Using UTC.")
                 current_time = datetime.now(pytz.UTC)
                 st.info(f"Current Time (UTC): {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         
-        # Exchange Status with improved visualization and error handling
+        # Exchange Status
         st.sidebar.subheader("Exchange Status")
-        try:
-            exchange_status = get_exchange_status()
-            
-            # Group exchanges by availability
-            available_exchanges = []
-            restricted_exchanges = []
-            unavailable_exchanges = []
-            
-            for exchange_id, status in exchange_status.items():
-                if status['status'] == 'available':
-                    available_exchanges.append((exchange_id, status))
-                elif status['status'] == 'restricted':
-                    restricted_exchanges.append((exchange_id, status))
-                else:
-                    unavailable_exchanges.append((exchange_id, status))
-            
-            # Display available exchanges
-            if available_exchanges:
-                st.sidebar.markdown("#### 🟢 Available Exchanges")
-                for exchange_id, status in available_exchanges:
-                    with st.sidebar.expander(f"{exchange_id.upper()}"):
-                        st.write("Features:", ", ".join(status.get('features', ['Basic trading'])))
-                        st.write("Reliability:", f"{status.get('reliability', 0.0)*100:.1f}%")
-                        if 'response_time' in status:
-                            st.write("Response Time:", f"{status['response_time']*1000:.0f}ms")
-                        st.write("Regions:", ", ".join(status.get('regions', ['GLOBAL'])))
-            else:
-                st.sidebar.warning("No exchanges currently available. Using fallback data sources.")
-            
-            # Display restricted exchanges
-            if restricted_exchanges:
-                st.sidebar.markdown("#### 🔸 Restricted Exchanges")
-                for exchange_id, status in restricted_exchanges:
-                    with st.sidebar.expander(f"{exchange_id.upper()}"):
-                        st.write("Reason:", status.get('error', 'Region restricted'))
-                        st.write("Available Regions:", ", ".join(status.get('regions', ['Unknown'])))
-            
-            # Display unavailable exchanges
-            if unavailable_exchanges:
-                st.sidebar.markdown("#### 🔴 Unavailable Exchanges")
-                for exchange_id, status in unavailable_exchanges:
-                    with st.sidebar.expander(f"{exchange_id.upper()}"):
-                        st.write("Error:", status.get('error', 'Unknown error'))
-        except Exception as e:
-            st.sidebar.error(f"Error loading exchange status: {str(e)}")
-            st.sidebar.info("Continuing with fallback data sources...")
+        exchange_config = get_exchange_config()
+        if exchange_config.get('status'):
+            show_exchange_status(exchange_config['status'])
         
         # Coin selection with regional filtering
         st.sidebar.subheader("Market Selection")
@@ -194,6 +171,6 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
         }
         
     except Exception as e:
-        st.sidebar.error(f"Error rendering sidebar: {str(e)}")
+        show_error("Sidebar Error", str(e))
         st.sidebar.warning("Some features may be limited. Please refresh the page.")
         return None

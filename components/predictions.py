@@ -9,13 +9,42 @@ def render_prediction_section(data: pd.DataFrame):
     
     # Add description
     st.markdown("""
-    This section shows price predictions using multiple models and chart analysis:
-    - Model-based predictions using SMA, EMA, and Momentum
-    - Chart analysis with AI-powered predictions
-    - Real-time prediction updates
+    This section shows price predictions using multiple models:
+    - Simple Moving Average (SMA) based prediction
+    - Exponential Moving Average (EMA) based prediction
+    - Momentum-based prediction
     
     *Note: These predictions are for educational purposes only and should not be used as financial advice.*
     """)
+    
+    # Data validation
+    if data is None or data.empty:
+        st.error("No data available for prediction")
+        st.info("Please ensure valid market data is available")
+        return
+
+    # Add data validation and transformation
+    if 'price' not in data.columns:
+        if 'close' in data.columns:
+            data['price'] = data['close']
+        else:
+            st.error("Required price data is missing")
+            st.info("Please ensure the data contains either 'price' or 'close' column")
+            return
+
+    # Ensure numeric type
+    try:
+        data['price'] = pd.to_numeric(data['price'], errors='coerce')
+    except Exception as e:
+        st.error(f"Error converting price data to numeric: {str(e)}")
+        return
+
+    # Handle missing values
+    if data['price'].isnull().any():
+        data = data.dropna(subset=['price'])
+        if data.empty:
+            st.error("No valid price data available after cleaning")
+            return
     
     tab1, tab2 = st.tabs(["Model Predictions", "Chart Analysis & AI Predictions"])
     
@@ -40,11 +69,15 @@ def render_prediction_section(data: pd.DataFrame):
                 help="Choose prediction models to display"
             )
         
-        if not data.empty and len(selected_models) > 0:
+        if len(selected_models) > 0:
             try:
-                # Generate predictions
+                # Generate predictions with error handling
                 predictor = PricePredictor()
                 predictions = predictor.predict(data, forecast_days)
+                
+                if not predictions:
+                    st.warning("No predictions generated. Please try different parameters.")
+                    return
                 
                 # Create visualization
                 fig = go.Figure()
@@ -109,9 +142,10 @@ def render_prediction_section(data: pd.DataFrame):
                 
             except Exception as e:
                 st.error(f"Error generating predictions: {str(e)}")
-                st.info("Please try adjusting the parameters or selecting different models.")
+                st.info("Please ensure data contains valid price information")
+                return
         else:
-            st.warning("Please select at least one prediction model and ensure data is available.")
+            st.warning("Please select at least one prediction model")
     
     with tab2:
         render_chart_analysis_section()
@@ -139,7 +173,7 @@ def render_prediction_table(entry_price, target_price, stop_loss, trailing_stop,
 
 def render_chart_analysis_section():
     """Render chart analysis and AI predictions section."""
-    st.subheader("📊 Chart Analysis & AI Predictions")
+    st.markdown("### 📊 Chart Analysis & AI Predictions")
     
     # Add file uploader for chart images
     uploaded_file = st.file_uploader(
