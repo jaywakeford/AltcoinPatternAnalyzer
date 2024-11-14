@@ -20,7 +20,7 @@ def get_exchange_config() -> Dict[str, Any]:
         show_error("Exchange Configuration Error", str(e))
         return {}
 
-def render_sidebar() -> Optional[Dict[str, Any]]:
+def render_sidebar_content() -> Optional[Dict[str, Any]]:
     """
     Render the sidebar with enhanced filtering options and exchange status.
     Returns configuration dictionary or None if error occurs.
