@@ -4,7 +4,7 @@ import logging
 import pytz
 from datetime import datetime
 
-from components.sidebar import render_sidebar
+from components.sidebar import render_sidebar, get_exchange_config
 from components.altcoin_analysis import render_altcoin_analysis
 from components.predictions import render_prediction_section
 from components.backtesting import render_backtesting_section

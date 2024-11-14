@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 from utils.altcoin_analyzer import AltcoinAnalyzer
 import pandas as pd
 import numpy as np
@@ -62,13 +63,222 @@ def render_altcoin_analysis():
         _render_market_overview(filtered_df)
     
     with tabs[1]:
-        _render_historical_analysis(analyzer)
+        _render_historical_analysis(analyzer, filtered_df)
     
     with tabs[2]:
         _render_correlation_analysis(analyzer)
     
     with tabs[3]:
         _render_strategy_builder(analyzer)
+
+def _render_historical_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame):
+    """Render historical analysis section with enhanced visualization and guidance."""
+    st.markdown("""
+    ### Historical Sequence Analysis
+    
+    This section provides detailed insights into market momentum across different cryptocurrency categories:
+    
+    - **Overall Distribution**: Market-wide momentum patterns and trends
+    - **Category Analysis**: Separate analysis for Large, Mid, and Small Cap coins
+    - **Momentum Zones**: Clear identification of strong and weak momentum regions
+    - **Market Insights**: Category-specific statistics and trends
+    
+    *💡 Use the filters and interactive legend to focus on specific market segments.*
+    """)
+    
+    lookback_days = st.slider(
+        "Lookback Period (days)",
+        min_value=30,
+        max_value=365,
+        value=90,
+        help="Adjust the historical data range for analysis"
+    )
+    
+    # Get historical sequence data with error handling
+    try:
+        with st.spinner("Analyzing historical patterns..."):
+            sequence_data = analyzer.analyze_historical_sequence(
+                timeframe='1d',
+                lookback_days=lookback_days
+            )
+        
+        if not sequence_data:
+            st.warning("No historical data available for analysis. Please try adjusting the lookback period.")
+            return
+            
+        st.markdown("""
+        #### 📊 Momentum Distribution Analysis
+        
+        The analysis below shows momentum distribution across different market cap categories:
+        - **Large Caps**: Major cryptocurrencies with established market presence
+        - **Mid Caps**: Emerging projects with significant growth potential
+        - **Small Caps**: Early-stage projects with higher volatility
+        
+        *💡 Use the interactive legend to compare different market segments.*
+        """)
+        
+        if 'momentum_scores' not in sequence_data or not sequence_data['momentum_scores']:
+            st.warning("No momentum data available for the selected period.")
+            return
+        
+        # Create momentum scores series with symbol index
+        momentum_scores = pd.Series(sequence_data['momentum_scores'])
+        
+        # Group coins by cohorts
+        cohorts = {
+            'Large Caps': momentum_scores[momentum_scores.index.isin(df[df['category'] == 'Large Cap'].index)],
+            'Mid Caps': momentum_scores[momentum_scores.index.isin(df[df['category'] == 'Mid Cap'].index)],
+            'Small Caps': momentum_scores[momentum_scores.index.isin(df[df['category'] == 'Lower Cap'].index)]
+        }
+        
+        # Create enhanced visualization with cohort analysis
+        try:
+            # Create subplots for overall and category-specific analysis
+            fig = make_subplots(
+                rows=2, cols=1,
+                subplot_titles=('Overall Momentum Distribution', 'Momentum by Market Cap Category'),
+                vertical_spacing=0.2,
+                specs=[[{"type": "histogram"}], [{"type": "box"}]],
+                row_heights=[0.6, 0.4]
+            )
+            
+            # Overall momentum distribution
+            colors = ['rgba(23, 195, 123, 0.6)', '#FF9900', '#00FFFF']
+            for i, (cohort_name, cohort_data) in enumerate(cohorts.items()):
+                fig.add_trace(
+                    go.Histogram(
+                        x=cohort_data,
+                        name=cohort_name,
+                        nbinsx=30,
+                        marker_color=colors[i],
+                        marker_line=dict(color=colors[i].replace('0.6', '1'), width=1),
+                        hovertemplate=(
+                            "<b>%{text}</b><br>" +
+                            "Momentum: %{x:.1f}<br>" +
+                            "Count: %{y}<br>" +
+                            f"Category: {cohort_name}<br>" +
+                            "<extra></extra>"
+                        ),
+                        text=[cohort_name] * len(cohort_data)
+                    ),
+                    row=1, col=1
+                )
+            
+            # Add momentum zones and trend lines
+            zone_annotations = [
+                dict(x=-75, y=1, text="Strong Bearish", showarrow=False, font=dict(color="red")),
+                dict(x=-25, y=1, text="Weak Bearish", showarrow=False, font=dict(color="orange")),
+                dict(x=25, y=1, text="Weak Bullish", showarrow=False, font=dict(color="lightgreen")),
+                dict(x=75, y=1, text="Strong Bullish", showarrow=False, font=dict(color="green"))
+            ]
+            
+            for zone in [-75, -25, 25, 75]:
+                fig.add_vline(
+                    x=zone,
+                    line_dash="dash",
+                    line_color="gray",
+                    row=1, col=1
+                )
+            
+            # Add category-specific box plots
+            for i, (cohort_name, cohort_data) in enumerate(cohorts.items()):
+                fig.add_trace(
+                    go.Box(
+                        x=cohort_data,
+                        name=cohort_name,
+                        marker_color=colors[i],
+                        boxpoints='outliers',
+                        hovertemplate=(
+                            f"<b>{cohort_name}</b><br>" +
+                            "Momentum: %{x:.1f}<br>" +
+                            "Median: %{median:.1f}<br>" +
+                            "Q1: %{q1:.1f}<br>" +
+                            "Q3: %{q3:.1f}<br>" +
+                            "<extra></extra>"
+                        )
+                    ),
+                    row=2, col=1
+                )
+            
+            # Update layout with enhanced styling
+            fig.update_layout(
+                title=dict(
+                    text="Market Momentum Analysis",
+                    font=dict(size=20)
+                ),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                template="plotly_dark",
+                height=800,
+                annotations=zone_annotations
+            )
+            
+            # Update axes
+            fig.update_xaxes(title_text="Momentum Score", row=1, col=1)
+            fig.update_yaxes(title_text="Number of Coins", row=1, col=1)
+            fig.update_xaxes(title_text="Momentum Score", row=2, col=1)
+            fig.update_yaxes(title_text="Distribution", row=2, col=1)
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Add cohort-specific insights
+            st.markdown("### 📈 Market Cohort Insights")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.info(f"""
+                **Large Caps ({len(cohorts['Large Caps'])} coins)**
+                - Median Momentum: {cohorts['Large Caps'].median():.1f}
+                - Volatility: {cohorts['Large Caps'].std():.1f}
+                - Trend: {_get_trend_description(cohorts['Large Caps'].mean())}
+                """)
+            
+            with col2:
+                st.info(f"""
+                **Mid Caps ({len(cohorts['Mid Caps'])} coins)**
+                - Median Momentum: {cohorts['Mid Caps'].median():.1f}
+                - Volatility: {cohorts['Mid Caps'].std():.1f}
+                - Trend: {_get_trend_description(cohorts['Mid Caps'].mean())}
+                """)
+            
+            with col3:
+                st.info(f"""
+                **Small Caps ({len(cohorts['Small Caps'])} coins)**
+                - Median Momentum: {cohorts['Small Caps'].median():.1f}
+                - Volatility: {cohorts['Small Caps'].std():.1f}
+                - Trend: {_get_trend_description(cohorts['Small Caps'].mean())}
+                """)
+            
+        except Exception as e:
+            logger.error(f"Error creating momentum distribution plot: {str(e)}")
+            st.error("Error creating momentum distribution visualization. Please try again later.")
+            return
+            
+    except Exception as e:
+        logger.error(f"Error in historical analysis: {str(e)}")
+        st.error("An error occurred while analyzing historical data. Please try again later.")
+
+def _get_trend_description(momentum: float) -> str:
+    """Get trend description based on momentum value."""
+    if momentum > 50:
+        return "Strongly Bullish 🚀"
+    elif momentum > 25:
+        return "Moderately Bullish 📈"
+    elif momentum > 0:
+        return "Slightly Bullish ↗️"
+    elif momentum > -25:
+        return "Slightly Bearish ↘️"
+    elif momentum > -50:
+        return "Moderately Bearish 📉"
+    else:
+        return "Strongly Bearish 🔻"
 
 def _render_market_overview(df: pd.DataFrame):
     """Render market overview section."""
@@ -113,269 +323,6 @@ def _render_market_overview(df: pd.DataFrame):
             ['symbol', 'category', 'volume_24h', 'change_24h']
         ]
         st.dataframe(volume_leaders)
-
-def _render_historical_analysis(analyzer: AltcoinAnalyzer):
-    """Render historical analysis section with enhanced visualization and guidance."""
-    st.markdown("""
-    ### Historical Sequence Analysis
-    
-    This section helps you understand the historical patterns and momentum distribution 
-    across different cryptocurrency categories. The analysis provides insights into:
-    
-    - **Momentum Distribution**: Shows how coins are distributed across different momentum ranges
-    - **Phase Indicators**: Visualizes key market cycle phases and trend strength
-    - **Entry/Exit Points**: Identifies potential trading opportunities
-    
-    *💡 Use the lookback period slider to adjust the analysis timeframe.*
-    """)
-    
-    lookback_days = st.slider(
-        "Lookback Period (days)",
-        min_value=30,
-        max_value=365,
-        value=90,
-        help="Adjust the historical data range for analysis"
-    )
-    
-    # Get historical sequence data with error handling
-    try:
-        with st.spinner("Analyzing historical patterns..."):
-            sequence_data = analyzer.analyze_historical_sequence(
-                timeframe='1d',
-                lookback_days=lookback_days
-            )
-        
-        if not sequence_data:
-            st.warning("No historical data available for analysis. Please try adjusting the lookback period.")
-            return
-            
-        # Enhanced momentum distribution plot with error handling
-        st.markdown("""
-        #### 📊 Momentum Distribution Analysis
-        
-        The momentum distribution shows how cryptocurrencies are spread across different momentum ranges:
-        - **Positive Values**: Indicate upward price momentum
-        - **Negative Values**: Indicate downward price momentum
-        - **Distribution Shape**: Shows market sentiment and trend strength
-        
-        *💡 Hover over the bars to see detailed statistics.*
-        """)
-        
-        # Check if momentum scores exist and are not empty
-        if 'momentum_scores' not in sequence_data or not sequence_data['momentum_scores']:
-            st.warning("No momentum data available for the selected period.")
-            return
-            
-        momentum_scores = pd.Series(sequence_data['momentum_scores'])
-        if momentum_scores.empty:
-            st.warning("No momentum scores available for analysis.")
-            return
-            
-        # Create enhanced histogram with better visual appeal and error handling
-        try:
-            fig = go.Figure()
-            
-            # Add histogram trace with custom styling
-            fig.add_trace(go.Histogram(
-                x=momentum_scores,
-                nbinsx=30,
-                name="Coins",
-                marker_color='rgba(23, 195, 123, 0.6)',
-                marker_line=dict(color='rgba(23, 195, 123, 1)', width=1),
-                hovertemplate=(
-                    "<b>Momentum Range</b>: %{x:.1f} to %{x:.1f}<br>" +
-                    "<b>Number of Coins</b>: %{y}<br>" +
-                    "<extra></extra>"
-                )
-            ))
-            
-            # Calculate statistics with fallback values
-            mean_momentum = momentum_scores.mean() if not momentum_scores.empty else 0
-            median_momentum = momentum_scores.median() if not momentum_scores.empty else 0
-            
-            # Add mean and median lines
-            fig.add_vline(
-                x=mean_momentum,
-                line_dash="dash",
-                line_color="yellow",
-                annotation=dict(
-                    text=f"Mean: {mean_momentum:.1f}",
-                    font=dict(color="yellow")
-                )
-            )
-            
-            fig.add_vline(
-                x=median_momentum,
-                line_dash="dash",
-                line_color="cyan",
-                annotation=dict(
-                    text=f"Median: {median_momentum:.1f}",
-                    font=dict(color="cyan")
-                )
-            )
-            
-            # Get max y value safely
-            max_y = 0
-            if fig.data and len(fig.data) > 0 and fig.data[0].y is not None and len(fig.data[0].y) > 0:
-                max_y = max(fig.data[0].y)
-            
-            # Update layout with enhanced styling
-            fig.update_layout(
-                title=dict(
-                    text="Momentum Distribution",
-                    font=dict(size=20)
-                ),
-                xaxis_title="Momentum Score",
-                yaxis_title="Number of Coins",
-                template="plotly_dark",
-                height=500,
-                showlegend=False,
-                hovermode='x',
-                margin=dict(l=50, r=50, t=80, b=50),
-                annotations=[
-                    dict(
-                        text="Strong Bearish",
-                        x=-75,
-                        y=max_y,
-                        yref="y",
-                        xref="x",
-                        showarrow=False,
-                        font=dict(color="red", size=12)
-                    ),
-                    dict(
-                        text="Strong Bullish",
-                        x=75,
-                        y=max_y,
-                        yref="y",
-                        xref="x",
-                        showarrow=False,
-                        font=dict(color="green", size=12)
-                    )
-                ]
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Add interpretation guidance
-            col1, col2 = st.columns(2)
-            with col1:
-                st.info("""
-                **📈 How to Interpret:**
-                - **Skew**: Distribution leaning right indicates bullish momentum
-                - **Spread**: Wide spread shows high market volatility
-                - **Peaks**: Multiple peaks suggest market segmentation
-                """)
-            
-            with col2:
-                st.info("""
-                **🎯 Trading Implications:**
-                - High positive momentum: Consider taking profits
-                - Low negative momentum: Look for potential entries
-                - Neutral zone: Focus on range-bound strategies
-                """)
-            
-        except Exception as e:
-            logger.error(f"Error creating momentum distribution plot: {str(e)}")
-            st.error("Error creating momentum distribution visualization. Please try again later.")
-            return
-        
-        # Phase indicators heatmap with enhanced error handling
-        try:
-            if not sequence_data.get('phase_indicators'):
-                st.warning("No phase indicators data available for the selected period.")
-                return
-                
-            st.markdown("""
-            #### 🌊 Market Phase Analysis
-            
-            The heatmap below shows different market phases and indicators:
-            - **Volume Trend**: Indicates trading activity strength
-            - **Price Trend**: Shows directional movement
-            - **Volatility**: Measures price fluctuation intensity
-            
-            *💡 Darker colors indicate stronger signals.*
-            """)
-            
-            phase_df = pd.DataFrame(sequence_data['phase_indicators']).T
-            if phase_df.empty:
-                st.warning("No phase data available for visualization.")
-                return
-            
-            # Create enhanced heatmap
-            fig = px.imshow(
-                phase_df,
-                title="Phase Indicators Heatmap",
-                color_continuous_scale=[
-                    [0, "rgb(165,0,38)"],
-                    [0.5, "rgb(49,54,149)"],
-                    [1, "rgb(0,104,55)"]
-                ],
-                aspect="auto",
-                labels=dict(
-                    color="Strength",
-                    x="Indicator",
-                    y="Asset"
-                )
-            )
-            
-            fig.update_layout(
-                height=max(400, len(phase_df) * 20),
-                margin=dict(l=50, r=50, t=80, b=50)
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-        except Exception as e:
-            logger.error(f"Error creating phase indicators heatmap: {str(e)}")
-            st.error("Error creating phase indicators visualization. Please try again later.")
-            return
-        
-        # Display entry/exit points with enhanced error handling
-        st.markdown("### 🎯 Market Entry/Exit Points")
-        try:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("""
-                #### Entry Opportunities
-                *Identified based on momentum and phase analysis*
-                """)
-                entry_points = sequence_data.get('entry_points', {})
-                if not entry_points:
-                    st.info("No entry points identified for the current period.")
-                else:
-                    entry_df = pd.DataFrame(entry_points).T
-                    if not entry_df.empty:
-                        st.dataframe(
-                            entry_df,
-                            use_container_width=True,
-                            height=400
-                        )
-            
-            with col2:
-                st.markdown("""
-                #### Exit Signals
-                *Based on momentum shifts and market conditions*
-                """)
-                exit_points = sequence_data.get('exit_points', {})
-                if not exit_points:
-                    st.info("No exit points identified for the current period.")
-                else:
-                    exit_df = pd.DataFrame(exit_points).T
-                    if not exit_df.empty:
-                        st.dataframe(
-                            exit_df,
-                            use_container_width=True,
-                            height=400
-                        )
-                        
-        except Exception as e:
-            logger.error(f"Error displaying entry/exit points: {str(e)}")
-            st.error("Error displaying entry/exit points. Please try again later.")
-            
-    except Exception as e:
-        logger.error(f"Error in historical analysis: {str(e)}")
-        st.error("An error occurred while analyzing historical data. Please try again later.")
 
 def _render_correlation_analysis(analyzer: AltcoinAnalyzer):
     """Render correlation analysis section."""
