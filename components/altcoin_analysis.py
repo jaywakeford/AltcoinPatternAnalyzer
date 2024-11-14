@@ -112,58 +112,214 @@ def _render_market_overview(df: pd.DataFrame):
         st.dataframe(volume_leaders)
 
 def _render_historical_analysis(analyzer: AltcoinAnalyzer):
-    """Render historical analysis section."""
-    st.markdown("### Historical Sequence Analysis")
+    """Render historical analysis section with enhanced visualization and guidance."""
+    st.markdown("""
+    ### Historical Sequence Analysis
+    
+    This section helps you understand the historical patterns and momentum distribution 
+    across different cryptocurrency categories. The analysis provides insights into:
+    
+    - **Momentum Distribution**: Shows how coins are distributed across different momentum ranges
+    - **Phase Indicators**: Visualizes key market cycle phases and trend strength
+    - **Entry/Exit Points**: Identifies potential trading opportunities
+    
+    *💡 Use the lookback period slider to adjust the analysis timeframe.*
+    """)
     
     lookback_days = st.slider(
         "Lookback Period (days)",
         min_value=30,
         max_value=365,
-        value=90
+        value=90,
+        help="Adjust the historical data range for analysis"
     )
     
     # Get historical sequence data
-    sequence_data = analyzer.analyze_historical_sequence(
-        timeframe='1d',
-        lookback_days=lookback_days
-    )
+    with st.spinner("Analyzing historical patterns..."):
+        sequence_data = analyzer.analyze_historical_sequence(
+            timeframe='1d',
+            lookback_days=lookback_days
+        )
     
     if sequence_data:
-        # Plot momentum distribution
+        # Enhanced momentum distribution plot
+        st.markdown("""
+        #### 📊 Momentum Distribution Analysis
+        
+        The momentum distribution shows how cryptocurrencies are spread across different momentum ranges:
+        - **Positive Values**: Indicate upward price momentum
+        - **Negative Values**: Indicate downward price momentum
+        - **Distribution Shape**: Shows market sentiment and trend strength
+        
+        *💡 Hover over the bars to see detailed statistics.*
+        """)
+        
         momentum_scores = pd.Series(sequence_data['momentum_scores'])
-        fig = px.histogram(
-            momentum_scores,
-            title="Momentum Distribution",
-            nbins=20,
-            color_discrete_sequence=['lightblue']
+        
+        # Create enhanced histogram with better visual appeal
+        fig = go.Figure()
+        
+        # Add histogram trace with custom styling
+        fig.add_trace(go.Histogram(
+            x=momentum_scores,
+            nbinsx=30,
+            name="Coins",
+            marker_color='rgba(23, 195, 123, 0.6)',
+            marker_line=dict(color='rgba(23, 195, 123, 1)', width=1),
+            hovertemplate=(
+                "<b>Momentum Range</b>: %{x:.1f} to %{x:.1f} + %{y}<br>" +
+                "<b>Number of Coins</b>: %{y}<br>" +
+                "<extra></extra>"
+            )
+        ))
+        
+        # Add mean and median lines
+        mean_momentum = momentum_scores.mean()
+        median_momentum = momentum_scores.median()
+        
+        fig.add_vline(
+            x=mean_momentum,
+            line_dash="dash",
+            line_color="yellow",
+            annotation=dict(
+                text=f"Mean: {mean_momentum:.1f}",
+                font=dict(color="yellow")
+            )
         )
+        
+        fig.add_vline(
+            x=median_momentum,
+            line_dash="dash",
+            line_color="cyan",
+            annotation=dict(
+                text=f"Median: {median_momentum:.1f}",
+                font=dict(color="cyan")
+            )
+        )
+        
+        # Update layout with enhanced styling
+        fig.update_layout(
+            title=dict(
+                text="Momentum Distribution",
+                font=dict(size=20)
+            ),
+            xaxis_title="Momentum Score",
+            yaxis_title="Number of Coins",
+            template="plotly_dark",
+            height=500,
+            showlegend=False,
+            hovermode='x',
+            margin=dict(l=50, r=50, t=80, b=50),
+            annotations=[
+                dict(
+                    text="Strong Bearish",
+                    x=-75,
+                    y=fig.data[0].y.max() if len(fig.data) > 0 else 0,
+                    yref="y",
+                    xref="x",
+                    showarrow=False,
+                    font=dict(color="red", size=12)
+                ),
+                dict(
+                    text="Strong Bullish",
+                    x=75,
+                    y=fig.data[0].y.max() if len(fig.data) > 0 else 0,
+                    yref="y",
+                    xref="x",
+                    showarrow=False,
+                    font=dict(color="green", size=12)
+                )
+            ]
+        )
+        
         st.plotly_chart(fig, use_container_width=True)
         
-        # Phase indicators heatmap
+        # Add interpretation guidance
+        col1, col2 = st.columns(2)
+        with col1:
+            st.info("""
+            **📈 How to Interpret:**
+            - **Skew**: Distribution leaning right indicates bullish momentum
+            - **Spread**: Wide spread shows high market volatility
+            - **Peaks**: Multiple peaks suggest market segmentation
+            """)
+        
+        with col2:
+            st.info("""
+            **🎯 Trading Implications:**
+            - High positive momentum: Consider taking profits
+            - Low negative momentum: Look for potential entries
+            - Neutral zone: Focus on range-bound strategies
+            """)
+        
+        # Phase indicators heatmap with enhanced visualization
         if sequence_data['phase_indicators']:
+            st.markdown("""
+            #### 🌊 Market Phase Analysis
+            
+            The heatmap below shows different market phases and indicators:
+            - **Volume Trend**: Indicates trading activity strength
+            - **Price Trend**: Shows directional movement
+            - **Volatility**: Measures price fluctuation intensity
+            
+            *💡 Darker colors indicate stronger signals.*
+            """)
+            
             phase_df = pd.DataFrame(sequence_data['phase_indicators']).T
+            
+            # Create enhanced heatmap
             fig = px.imshow(
                 phase_df,
                 title="Phase Indicators Heatmap",
-                color_continuous_scale="RdYlBu"
+                color_continuous_scale=[
+                    [0, "rgb(165,0,38)"],
+                    [0.5, "rgb(49,54,149)"],
+                    [1, "rgb(0,104,55)"]
+                ],
+                aspect="auto",
+                labels=dict(
+                    color="Strength",
+                    x="Indicator",
+                    y="Asset"
+                )
             )
+            
+            fig.update_layout(
+                height=max(400, len(phase_df) * 20),
+                margin=dict(l=50, r=50, t=80, b=50)
+            )
+            
             st.plotly_chart(fig, use_container_width=True)
         
-        # Display entry/exit points
-        st.markdown("### Market Entry/Exit Points")
+        # Display entry/exit points with enhanced formatting
+        st.markdown("### 🎯 Market Entry/Exit Points")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Suggested Entry Points**")
+            st.markdown("""
+            #### Entry Opportunities
+            *Identified based on momentum and phase analysis*
+            """)
             entry_df = pd.DataFrame(sequence_data.get('entry_points', {})).T
             if not entry_df.empty:
-                st.dataframe(entry_df)
+                st.dataframe(
+                    entry_df,
+                    use_container_width=True,
+                    height=400
+                )
         
         with col2:
-            st.markdown("**Suggested Exit Points**")
+            st.markdown("""
+            #### Exit Signals
+            *Based on momentum shifts and market conditions*
+            """)
             exit_df = pd.DataFrame(sequence_data.get('exit_points', {})).T
             if not exit_df.empty:
-                st.dataframe(exit_df)
+                st.dataframe(
+                    exit_df,
+                    use_container_width=True,
+                    height=400
+                )
 
 def _render_correlation_analysis(analyzer: AltcoinAnalyzer):
     """Render correlation analysis section."""
@@ -226,7 +382,7 @@ def _render_strategy_builder(analyzer: AltcoinAnalyzer):
         st.markdown("#### Portfolio Allocations")
         allocations_df = pd.DataFrame(strategy['allocations']).T
         fig = px.pie(
-            values=allocations_df['percentage'],
+            values=allocations_df['capital'],
             names=allocations_df.index,
             title="Portfolio Allocation",
             color_discrete_sequence=px.colors.qualitative.Set3
@@ -254,16 +410,16 @@ def _render_strategy_builder(analyzer: AltcoinAnalyzer):
                     st.write(f"TP {i}: ${level:.2f}")
                 st.write(f"Stop Loss: ${exit_points['stop_loss']:.2f}")
         
-        # Risk metrics visualization with fixed size values
+        # Risk metrics visualization
         st.markdown("#### Risk Metrics")
         risk_df = pd.DataFrame(strategy['risk_metrics']).T
         # Convert negative values to positive for scatter plot size
-        risk_df['plot_size'] = risk_df['momentum_score'].abs() + 1  # Add 1 to ensure positive values
+        risk_df['plot_size'] = risk_df['momentum_score'].abs() + 1
         fig = px.scatter(
             risk_df,
             x='volatility',
             y='volume_factor',
-            size='plot_size',  # Use positive values for size
+            size='plot_size',
             hover_name=risk_df.index,
             title="Risk-Return Profile",
             color_discrete_sequence=px.colors.qualitative.Set3
