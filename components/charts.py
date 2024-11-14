@@ -4,29 +4,27 @@ from utils.technical_analysis import calculate_sma, calculate_ema, calculate_rsi
 from utils.data_fetcher import get_bitcoin_dominance
 
 def render_price_charts(df, selected_indicators):
-    """Render price charts with selected technical indicators."""
-    # Add container with padding for better visual capture
+    """Render price charts with optimized layout and sizing."""
     with st.container():
-        st.markdown('<div style="padding: 10px 0;"></div>', unsafe_allow_html=True)
-        
+        # Main price chart with increased height and responsive sizing
         fig = go.Figure()
         
-        # Add price candlesticks
+        # Add price candlesticks with improved styling
         fig.add_trace(go.Scatter(
             x=df.index,
             y=df['price'],
             name="Price",
-            line=dict(color='#17C37B')
+            line=dict(color='#17C37B', width=2)
         ))
         
-        # Add technical indicators
+        # Add technical indicators with improved visibility
         if selected_indicators['SMA']:
             sma = calculate_sma(df, 20)
             fig.add_trace(go.Scatter(
                 x=df.index,
                 y=sma,
                 name="SMA (20)",
-                line=dict(color='#FF9900')
+                line=dict(color='#FF9900', width=1.5, dash='dot')
             ))
         
         if selected_indicators['EMA']:
@@ -35,23 +33,24 @@ def render_price_charts(df, selected_indicators):
                 x=df.index,
                 y=ema,
                 name="EMA (20)",
-                line=dict(color='#00FFFF')
+                line=dict(color='#00FFFF', width=1.5, dash='dot')
             ))
         
-        # Update layout with optimized margins for screenshots
+        # Optimize chart layout
         fig.update_layout(
             title={
                 'text': "Price Chart",
                 'y':0.95,
                 'x':0.5,
                 'xanchor': 'center',
-                'yanchor': 'top'
+                'yanchor': 'top',
+                'font': dict(size=20)
             },
             xaxis_title="Date",
             yaxis_title="Price (USD)",
             template="plotly_dark",
-            height=550,  # Increased height for better visibility
-            margin=dict(l=50, r=50, t=50, b=50),  # Increased margins
+            height=600,  # Increased height
+            margin=dict(l=60, r=60, t=80, b=60),
             showlegend=True,
             legend=dict(
                 yanchor="top",
@@ -60,23 +59,36 @@ def render_price_charts(df, selected_indicators):
                 x=0.01,
                 bgcolor="rgba(0,0,0,0.5)",
                 bordercolor="rgba(255,255,255,0.2)",
-                borderwidth=1
+                borderwidth=1,
+                font=dict(size=12)
             ),
             plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(255,255,255,0.1)'
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='rgba(255,255,255,0.1)'
+            )
         )
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Add spacing between charts
-        st.markdown('<div style="padding: 20px 0;"></div>', unsafe_allow_html=True)
-        
-        # Additional indicators in separate charts with optimized layouts
-        if selected_indicators['RSI']:
-            render_rsi_chart(df)
-        
-        if selected_indicators['MACD']:
-            render_macd_chart(df)
+        # Create two columns for additional indicators
+        if selected_indicators['RSI'] or selected_indicators['MACD']:
+            col1, col2 = st.columns(2)
+            
+            if selected_indicators['RSI']:
+                with col1:
+                    render_rsi_chart(df)
+            
+            if selected_indicators['MACD']:
+                with col2:
+                    render_macd_chart(df)
 
 def render_rsi_chart(df):
     """Render RSI indicator chart."""
@@ -116,7 +128,7 @@ def render_rsi_chart(df):
         },
         yaxis_title="RSI Value",
         template="plotly_dark",
-        height=300,
+        height=350,  # Increased height
         margin=dict(l=50, r=50, t=50, b=50),  # Increased margins
         showlegend=True,
         legend=dict(
@@ -165,7 +177,7 @@ def render_macd_chart(df):
         },
         yaxis_title="Value",
         template="plotly_dark",
-        height=300,
+        height=350,  # Increased height
         margin=dict(l=50, r=50, t=50, b=50),  # Increased margins
         showlegend=True,
         legend=dict(

@@ -5,6 +5,8 @@ import pytz
 from utils.data_fetcher import get_exchange_status, detect_region
 from utils.ui_components import show_error, show_warning, show_exchange_status
 
+__all__ = ['render_sidebar', 'get_exchange_config']
+
 def get_exchange_config() -> Dict[str, Any]:
     """Get exchange configuration and status."""
     try:
@@ -27,6 +29,12 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
     """
     try:
         st.sidebar.title("Analysis Settings")
+        
+        # Exchange Status - Move this section to the top
+        st.sidebar.subheader("Exchange Status")
+        exchange_config = get_exchange_config()
+        if exchange_config.get('status'):
+            show_exchange_status(exchange_config['status'])
         
         # Initialize session state for region and timezone if not exists
         if 'selected_region' not in st.session_state:
@@ -82,20 +90,15 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
             st.session_state.selected_timezone = selected_timezone
             
             # Display current time in selected timezone
-            try:
-                tz = pytz.timezone(selected_timezone)
-                current_time = datetime.now(tz)
-                st.info(f"Current Time: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-            except Exception as e:
-                st.warning(f"Error setting timezone: {str(e)}. Using UTC.")
-                current_time = datetime.now(pytz.UTC)
-                st.info(f"Current Time (UTC): {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        
-        # Exchange Status
-        st.sidebar.subheader("Exchange Status")
-        exchange_config = get_exchange_config()
-        if exchange_config.get('status'):
-            show_exchange_status(exchange_config['status'])
+            if selected_timezone:
+                try:
+                    tz = pytz.timezone(selected_timezone)
+                    current_time = datetime.now(tz)
+                    st.info(f"Current Time: {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                except Exception as e:
+                    st.warning(f"Error setting timezone: {str(e)}. Using UTC.")
+                    current_time = datetime.now(pytz.UTC)
+                    st.info(f"Current Time (UTC): {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
         
         # Coin selection with regional filtering
         st.sidebar.subheader("Market Selection")
