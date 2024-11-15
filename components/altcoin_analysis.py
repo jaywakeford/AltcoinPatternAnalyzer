@@ -11,46 +11,95 @@ from utils.altcoin_analyzer import AltcoinAnalyzer
 
 logger = logging.getLogger(__name__)
 
-def _calculate_advanced_metrics(df: pd.DataFrame) -> Dict:
-    """Calculate advanced market metrics."""
-    metrics = {}
+def render_altcoin_analysis():
+    """Main function to render altcoin analysis."""
     try:
-        # Market Dominance
-        total_market_cap = df['market_cap'].sum()
-        metrics['dominance'] = {
-            symbol: (cap / total_market_cap) * 100 
-            for symbol, cap in df.nlargest(5, 'market_cap')[['symbol', 'market_cap']].values
-        }
+        st.title("Altcoin Market Analysis")
         
-        # Volatility Index
-        metrics['volatility'] = df['change_24h'].std()
+        # Initialize analyzer
+        analyzer = AltcoinAnalyzer()
         
-        # Market Momentum
-        metrics['momentum'] = df['change_24h'].mean()
+        # Fetch initial data
+        with st.spinner("Fetching market data..."):
+            df = analyzer.fetch_top_50_cryptocurrencies()
+            
+            if df.empty:
+                st.error("Unable to fetch cryptocurrency data. Please try again later.")
+                return
         
-        # Market Health Score (0-100)
-        positive_changes = (df['change_24h'] > 0).sum()
-        health_score = (positive_changes / len(df)) * 100
-        metrics['health_score'] = health_score
+        # Create tabs for different analysis sections
+        tab1, tab2, tab3 = st.tabs([
+            "📊 Real-time Analysis",
+            "📈 Historical Patterns",
+            "🔄 Correlation Analysis"
+        ])
         
-        # Volume Analysis
-        metrics['volume_concentration'] = (
-            df.nlargest(10, 'volume_24h')['volume_24h'].sum() / 
-            df['volume_24h'].sum() * 100
-        )
-        
+        with tab1:
+            _render_realtime_analysis(analyzer, df)
+            
+        with tab2:
+            _render_historical_analysis(analyzer, df)
+            
+        with tab3:
+            _render_correlation_analysis(analyzer)
+            
+    except Exception as e:
+        logger.error(f"Error in altcoin analysis: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
+
+def _calculate_advanced_metrics(df: pd.DataFrame) -> Dict:
+    """Calculate advanced market metrics with proper error handling."""
+    metrics = {
+        'dominance': {},
+        'volatility': 0.0,
+        'momentum': 0.0,
+        'health_score': 0.0,
+        'volume_concentration': 0.0
+    }
+    
+    try:
+        if not df.empty:
+            # Market Dominance
+            total_market_cap = df['market_cap'].sum()
+            if total_market_cap > 0:
+                metrics['dominance'] = {
+                    symbol: (cap / total_market_cap) * 100 
+                    for symbol, cap in df.nlargest(5, 'market_cap')[['symbol', 'market_cap']].values
+                }
+            
+            # Convert numeric columns ensuring proper types
+            df['change_24h'] = pd.to_numeric(df['change_24h'], errors='coerce')
+            df['volume_24h'] = pd.to_numeric(df['volume_24h'], errors='coerce')
+            
+            # Volatility Index
+            metrics['volatility'] = df['change_24h'].std() or 0.0
+            
+            # Market Momentum
+            metrics['momentum'] = df['change_24h'].mean() or 0.0
+            
+            # Market Health Score
+            positive_changes = (df['change_24h'] > 0).sum()
+            metrics['health_score'] = (positive_changes / len(df)) * 100 if len(df) > 0 else 0.0
+            
+            # Volume Analysis
+            total_volume = df['volume_24h'].sum()
+            if total_volume > 0:
+                metrics['volume_concentration'] = (
+                    df.nlargest(10, 'volume_24h')['volume_24h'].sum() / 
+                    total_volume * 100
+                )
+                
     except Exception as e:
         logger.error(f"Error calculating advanced metrics: {str(e)}")
-        return {}
-    
+        
     return metrics
 
 def _render_realtime_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> None:
-    """Render enhanced real-time analysis section."""
+    """Render real-time analysis section."""
     try:
         st.markdown("### 📊 Real-time Market Analysis")
         
-        # Interval selection with proper time calculations
+        # Interval selection
         intervals = {
             "1m": 60,
             "5m": 300,
@@ -69,53 +118,49 @@ def _render_realtime_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> No
             )
         
         with col2:
-            auto_refresh = st.toggle("Enable Auto-refresh", value=True)
+            # Replace toggle with checkbox
+            auto_refresh = st.checkbox("Enable Auto-refresh", value=True)
         
-        # Initialize session state for last update time
+        # Initialize or update session state
         if 'last_update' not in st.session_state:
             st.session_state.last_update = datetime.now()
         
-        # Check if it's time to update
+        # Auto-refresh logic
         current_time = datetime.now()
         if auto_refresh and (current_time - st.session_state.last_update).total_seconds() >= intervals[update_interval]:
             df = analyzer.fetch_top_50_cryptocurrencies()
             st.session_state.last_update = current_time
         
-        # Display last update time
-        st.caption(f"Last Updated: {st.session_state.last_update.strftime('%H:%M:%S')}")
+        st.caption(f"Last Updated: {st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Calculate advanced metrics
-        advanced_metrics = _calculate_advanced_metrics(df)
+        # Calculate and display metrics
+        metrics = _calculate_advanced_metrics(df)
         
         # Create dashboard layout
         col1, col2 = st.columns(2)
         
         with col1:
-            _render_market_overview(df, advanced_metrics)
+            _render_market_overview(df, metrics)
             _render_volume_analysis(df)
             
         with col2:
-            _render_market_momentum(df, advanced_metrics)
-            _render_dominance_chart(advanced_metrics)
+            _render_market_momentum(df, metrics)
+            _render_dominance_chart(metrics)
         
         # Market Movement Analysis
         st.markdown("### 📈 Market Movements")
-        
-        # Create tabs for different timeframes
         movement_tabs = st.tabs(["24h Changes", "Volume Leaders", "Momentum"])
         
         with movement_tabs[0]:
             _render_price_changes(df)
-            
         with movement_tabs[1]:
             _render_volume_leaders(df)
-            
         with movement_tabs[2]:
             _render_momentum_analysis(df)
             
     except Exception as e:
         logger.error(f"Error in real-time analysis: {str(e)}")
-        st.error("An error occurred while updating real-time data. Please try again.")
+        st.error("Unable to update real-time data. Please try again later.")
 
 def _render_market_overview(df: pd.DataFrame, metrics: Dict) -> None:
     """Render enhanced market overview section."""
@@ -695,52 +740,6 @@ def _render_momentum_distribution(df: pd.DataFrame, sequence_data: Dict) -> None
         logger.error(f"Error rendering momentum distribution: {str(e)}")
         st.error("An error occurred while rendering the momentum distribution visualization. Please try again later.")
 
-def _render_historical_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> None:
-    """Render historical analysis section with improved visualization."""
-    try:
-        st.markdown("""
-        ### 📈 Historical Analysis
-        
-        This section provides insights into historical market patterns and momentum:
-        - Analyze momentum distribution across different market segments
-        - Track altcoin performance during Bitcoin's cooling periods
-        - Identify potential market opportunities
-        """)
-        
-        # Add timeframe selector
-        timeframe = st.selectbox(
-            "Select Analysis Timeframe",
-            ["7d", "30d", "90d", "180d", "1y"],
-            index=1,
-            help="Choose the period for historical analysis"
-        )
-
-        # Convert timeframe to days
-        days_map = {
-            "7d": 7,
-            "30d": 30,
-            "90d": 90,
-            "180d": 180,
-            "1y": 365
-        }
-        
-        lookback_days = days_map.get(timeframe, 30)
-        
-        with st.spinner("Analyzing historical patterns..."):
-            sequence_data = analyzer.analyze_historical_sequence(
-                timeframe='1d',
-                lookback_days=lookback_days
-            )
-            
-            if sequence_data:
-                _render_momentum_distribution(df, sequence_data)
-            else:
-                st.warning("No historical data available for analysis. Please try again later.")
-
-    except Exception as e:
-        logger.error(f"Error in historical analysis: {str(e)}")
-        st.error("An error occurred while analyzing historical data. Please try again later.")
-
 def _get_trend_description(momentum: float) -> str:
     """Get trend description based on momentum value."""
     if momentum > 50:
@@ -755,32 +754,3 @@ def _get_trend_description(momentum: float) -> str:
         return "Moderately Bearish 📉"
     else:
         return "Strongly Bearish 🔻"
-
-def render_altcoin_analysis():
-    """Main entry point for altcoin analysis."""
-    try:
-        analyzer = AltcoinAnalyzer()
-        df = analyzer.fetch_top_50_cryptocurrencies()
-        
-        if df.empty:
-            st.warning("Unable to fetch cryptocurrency data. Please try again later.")
-            return
-            
-        tab1, tab2, tab3 = st.tabs([
-            "🔄 Historical Analysis",
-            "📊 Real-time Analysis",
-            "🔗 Correlation Analysis"
-        ])
-        
-        with tab1:
-            _render_historical_analysis(analyzer, df)
-            
-        with tab2:
-            _render_realtime_analysis(analyzer, df)
-            
-        with tab3:
-            _render_correlation_analysis(analyzer)
-            
-    except Exception as e:
-        logger.error(f"Error in altcoin analysis: {str(e)}")
-        st.error("An error occurred while analyzing altcoin data. Please try again later.")
