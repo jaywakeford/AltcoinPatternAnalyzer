@@ -1,31 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import ccxt
-import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime, timedelta
 import logging
-import pytz
 import sys
-import traceback
 import asyncio
 import nest_asyncio
-from utils.data_fetcher import exchange_manager
-from utils.websocket_manager import websocket_manager
+from datetime import datetime
+import plotly.graph_objects as go
 
-# Enable nested asyncio support
-nest_asyncio.apply()
-
-# Set page configuration first
-st.set_page_config(
-    page_title="Crypto Analysis Platform",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Configure logging
+# Configure logging first
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -33,13 +16,27 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Import components
+# Enable nested asyncio support
+nest_asyncio.apply()
+
+# Set page configuration
+st.set_page_config(
+    page_title="Crypto Analysis Platform",
+    page_icon="📈",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Import local modules
+from styles.theme import apply_custom_theme
+from utils.data_fetcher import ExchangeManager
+from utils.websocket_manager import websocket_manager
 from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
 from components.backtesting import render_backtesting_section
-from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region
-from utils.ui_components import show_error, show_warning, show_data_source_info
-from utils.technical_analysis import calculate_advanced_metrics
+
+# Apply custom theme
+apply_custom_theme()
 
 def initialize_session_state():
     """Initialize session state variables."""
@@ -49,7 +46,7 @@ def initialize_session_state():
     required_states = {
         'exchange_status': None,
         'error_shown': False,
-        'selected_region': detect_region(),
+        'selected_region': None,
         'selected_timezone': 'UTC',
         'data_source': None,
         'sidebar_config': None,
@@ -61,15 +58,77 @@ def initialize_session_state():
         'ws_connections': {},
         'real_time_data': {},
         'websocket_status': {},
+        'last_price': {},
+        'price_changes': {},
         'initialized': True
     }
     
     for key, default_value in required_states.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
-            logger.info(f"Initialized {key} in session state")
-    
-    return True
+
+def render_realtime_chart(symbol: str):
+    """Render real-time price chart."""
+    try:
+        if symbol in st.session_state.real_time_data and st.session_state.real_time_data[symbol]:
+            data = st.session_state.real_time_data[symbol]
+            df = pd.DataFrame(data)
+            
+            # Create price chart
+            fig = go.Figure()
+            
+            # Add price line
+            fig.add_trace(go.Scatter(
+                x=df['timestamp'],
+                y=df['price'],
+                name="Price",
+                line=dict(color='#17C37B', width=2)
+            ))
+            
+            # Add volume bars if available
+            if 'volume' in df.columns and not df['volume'].isnull().all():
+                fig.add_trace(go.Bar(
+                    x=df['timestamp'],
+                    y=df['volume'],
+                    name="Volume",
+                    yaxis="y2",
+                    marker_color='rgba(23, 195, 178, 0.2)'
+                ))
+            
+            fig.update_layout(
+                title=f"{symbol} Real-time Price",
+                yaxis=dict(
+                    title="Price (USD)",
+                    titlefont=dict(color="#17C37B"),
+                    tickfont=dict(color="#17C37B")
+                ),
+                yaxis2=dict(
+                    title="Volume",
+                    overlaying="y",
+                    side="right",
+                    titlefont=dict(color="rgba(23, 195, 178, 0.6)"),
+                    tickfont=dict(color="rgba(23, 195, 178, 0.6)")
+                ),
+                height=500,
+                template="plotly_dark",
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                hovermode='x unified'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Waiting for real-time data...")
+            
+    except Exception as e:
+        logger.error(f"Error rendering chart: {str(e)}")
+        st.error("Unable to render real-time chart")
 
 async def handle_websocket_message(message: dict):
     """Handle incoming websocket messages."""
@@ -93,16 +152,29 @@ async def handle_websocket_message(message: dict):
                 data = message.get('data', {})
                 price = float(data.get('price', 0))
                 volume = float(data.get('volume', 0))
-                
+
         if symbol and price and price > 0:
             if symbol not in st.session_state.real_time_data:
                 st.session_state.real_time_data[symbol] = []
+            
+            # Calculate price change
+            if symbol not in st.session_state.last_price:
+                st.session_state.last_price[symbol] = price
+                price_change = 0
+            else:
+                last_price = st.session_state.last_price[symbol]
+                price_change = ((price - last_price) / last_price) * 100 if last_price > 0 else 0
+                st.session_state.last_price[symbol] = price
 
-            st.session_state.real_time_data[symbol].append({
+            # Update real-time data
+            data_point = {
                 'timestamp': timestamp,
                 'price': price,
-                'volume': volume if volume and volume > 0 else None
-            })
+                'volume': volume if volume and volume > 0 else None,
+                'price_change': price_change
+            }
+            
+            st.session_state.real_time_data[symbol].append(data_point)
 
             # Keep last 1000 data points
             if len(st.session_state.real_time_data[symbol]) > 1000:
@@ -111,105 +183,27 @@ async def handle_websocket_message(message: dict):
             # Update websocket status
             st.session_state.websocket_status[symbol] = {
                 'status': 'connected',
-                'last_update': timestamp
+                'last_update': timestamp,
+                'last_price': price,
+                'price_change': price_change
             }
-
-            # Force Streamlit to update
-            st.experimental_rerun()
 
     except Exception as e:
         logger.error(f"Error handling websocket message: {str(e)}")
         if symbol:
             st.session_state.websocket_status[symbol] = {
                 'status': 'error',
-                'error': str(e)
+                'error': str(e),
+                'last_update': datetime.now()
             }
 
-def render_real_time_chart(symbol: str):
-    """Render real-time price chart."""
-    try:
-        # Show websocket connection status
-        ws_status = st.session_state.websocket_status.get(symbol, {})
-        status = ws_status.get('status', 'initializing')
-        
-        if status == 'connected':
-            st.success(f"🟢 Connected to {symbol} websocket feed")
-        elif status == 'error':
-            st.error(f"🔴 Error in websocket connection: {ws_status.get('error', 'Unknown error')}")
-        else:
-            st.info("🔵 Initializing websocket connection...")
-
-        if symbol in st.session_state.real_time_data and st.session_state.real_time_data[symbol]:
-            data = st.session_state.real_time_data[symbol]
-            df = pd.DataFrame(data)
-            df.set_index('timestamp', inplace=True)
-
-            fig = go.Figure()
-            
-            # Price line
-            fig.add_trace(go.Scatter(
-                x=df.index,
-                y=df['price'],
-                name="Price",
-                line=dict(color='#17C37B', width=2)
-            ))
-
-            # Volume bars if available
-            if 'volume' in df.columns and not df['volume'].isnull().all():
-                fig.add_trace(go.Bar(
-                    x=df.index,
-                    y=df['volume'],
-                    name="Volume",
-                    yaxis="y2",
-                    marker_color='rgba(23, 195, 178, 0.2)'
-                ))
-
-            fig.update_layout(
-                title=f"Real-time {symbol} Price",
-                yaxis=dict(
-                    title="Price",
-                    titlefont=dict(color="#17C37B"),
-                    tickfont=dict(color="#17C37B")
-                ),
-                yaxis2=dict(
-                    title="Volume",
-                    overlaying="y",
-                    side="right",
-                    titlefont=dict(color="rgba(23, 195, 178, 0.6)"),
-                    tickfont=dict(color="rgba(23, 195, 178, 0.6)")
-                ),
-                height=500,
-                template="plotly_dark",
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                ),
-                hovermode='x unified'
-            )
-
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Waiting for real-time data...")
-            
-    except Exception as e:
-        logger.error(f"Error rendering chart: {str(e)}")
-        st.error("Unable to render real-time chart")
-
-async def setup_websocket_connection(symbol: str) -> bool:
+async def setup_websocket_connection(exchange_manager: ExchangeManager, symbol: str) -> bool:
     """Set up websocket connection with improved error handling."""
     try:
         if symbol not in st.session_state.ws_connections:
             st.session_state.websocket_status[symbol] = {
                 'status': 'initializing'
             }
-            
-            # Initialize exchange connection if needed
-            if not exchange_manager.active_exchange:
-                exchange_manager._initialize_exchange()
             
             # Enable websocket
             await exchange_manager.enable_websocket(
@@ -242,6 +236,9 @@ async def main_async():
         # Initialize session state
         initialize_session_state()
         
+        # Initialize exchange manager
+        exchange_manager = ExchangeManager()
+        
         # Set up page
         st.title("Cryptocurrency Analysis Platform")
         st.markdown("""
@@ -271,29 +268,42 @@ async def main_async():
                     symbol = f"{coin.upper()}/USDT"
                     
                     # Set up websocket connection
-                    connection_success = await setup_websocket_connection(symbol)
+                    connection_success = await setup_websocket_connection(exchange_manager, symbol)
                     if connection_success:
-                        # Render real-time chart
-                        render_real_time_chart(symbol)
-                        
-                        # Display historical data
-                        data = get_crypto_data(coin, sidebar_config['timeframe'])
-                        if not data.empty:
-                            st.markdown("### Historical Analysis")
-                            metrics = calculate_advanced_metrics(data)
-                            
-                            cols = st.columns(3)
-                            with cols[0]:
-                                st.metric("Volatility", f"{metrics['volatility']:.2f}%")
-                            with cols[1]:
-                                st.metric("Momentum", f"{metrics['momentum']:.2f}%")
-                            with cols[2]:
-                                st.metric("Market Strength", f"{metrics['market_strength']:.2f}")
+                        # Show connection status
+                        ws_status = st.session_state.websocket_status.get(symbol, {})
+                        if ws_status.get('status') == 'connected':
+                            st.success(f"🟢 Connected to {symbol} websocket feed")
+                        elif ws_status.get('status') == 'error':
+                            st.error(f"🔴 Websocket error: {ws_status.get('error', 'Unknown error')}")
                         else:
-                            st.info("Historical data temporarily unavailable")
-                    else:
-                        st.error("Failed to establish websocket connection. Please try again.")
-        
+                            st.info("🔵 Initializing websocket connection...")
+                        
+                        # Display real-time metrics
+                        if symbol in st.session_state.real_time_data and st.session_state.real_time_data[symbol]:
+                            data = st.session_state.real_time_data[symbol]
+                            latest = data[-1]
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric(
+                                    "Current Price",
+                                    f"${latest['price']:,.2f}",
+                                    f"{latest['price_change']:.2f}%"
+                                )
+                            with col2:
+                                st.metric(
+                                    "24h Volume",
+                                    f"${latest['volume']:,.2f}" if latest['volume'] else "N/A"
+                                )
+                            with col3:
+                                st.metric(
+                                    "Last Update",
+                                    latest['timestamp'].strftime('%H:%M:%S')
+                                )
+                        
+                        # Render real-time chart
+                        render_realtime_chart(symbol)
+
         # Altcoin Analysis Tab
         with tab2:
             render_altcoin_analysis()
@@ -301,23 +311,13 @@ async def main_async():
         # Strategy Builder Tab
         with tab3:
             render_backtesting_section()
-        
-        # Footer
-        st.sidebar.markdown("---")
-        show_data_source_info(
-            source=st.session_state.get('data_source', 'unknown'),
-            details={
-                'Last Updated': st.session_state.last_update.strftime('%Y-%m-%d %H:%M:%S'),
-                'Real-time Connections': len(st.session_state.ws_connections)
-            }
-        )
-        
+            
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
         st.error("An error occurred. Please refresh the page and try again.")
 
 def main():
-    """Main entry point that runs the async main function."""
+    """Main entry point."""
     asyncio.run(main_async())
 
 if __name__ == "__main__":

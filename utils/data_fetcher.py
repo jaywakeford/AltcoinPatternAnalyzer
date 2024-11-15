@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import ccxt
 from pycoingecko import CoinGeckoAPI
@@ -103,21 +104,70 @@ class ExchangeManager:
         """Initialize exchange with fallback options."""
         exchange_errors = []
         
+        # Get API keys from environment variables
+        api_key = os.getenv("KRAKEN_API_KEY")
+        api_secret = os.getenv("KRAKEN_SECRET")
+        
         for exchange_id in self._get_region_optimized_exchanges():
             try:
                 exchange_class = getattr(ccxt, exchange_id)
-                exchange = exchange_class({
+                
+                # Configure exchange with or without authentication
+                exchange_config = {
                     'enableRateLimit': True,
-                    'timeout': 30000,
-                    'apiKey': st.secrets.get("KRAKEN_API_KEY"),
-                    'secret': st.secrets.get("KRAKEN_SECRET"),
-                })
+                    'timeout': 30000
+                }
+                
+                # Add API keys if available
+                if api_key and api_secret and exchange_id == 'kraken':
+                    exchange_config.update({
+                        'apiKey': api_key,
+                        'secret': api_secret
+                    })
+                    logger.info(f"Initializing {exchange_id} with API key authentication")
+                else:
+                    logger.info(f"Initializing {exchange_id} with public API endpoints only")
+                
+                exchange = exchange_class(exchange_config)
+                
                 # Test API access
                 exchange.load_markets()
                 self.active_exchange = exchange
                 self.exchanges[exchange_id] = exchange
+                
+                # Update connection status with authentication level
+                self.connection_status[exchange_id] = {
+                    'status': 'available',
+                    'auth_level': 'authenticated' if api_key and api_secret else 'public',
+                    'last_checked': datetime.now()
+                }
+                
                 logger.info(f"Successfully connected to {exchange_id}")
                 break
+                
+            except ccxt.AuthenticationError as e:
+                error_msg = (
+                    f"Authentication failed for {exchange_id}. "
+                    "Please check your API credentials. "
+                    f"Error: {str(e)}"
+                )
+                exchange_errors.append(error_msg)
+                logger.warning(error_msg)
+                
+                # Try to fallback to public API
+                try:
+                    exchange = exchange_class({
+                        'enableRateLimit': True,
+                        'timeout': 30000
+                    })
+                    exchange.load_markets()
+                    self.active_exchange = exchange
+                    self.exchanges[exchange_id] = exchange
+                    logger.info(f"Fallback to public API successful for {exchange_id}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Public API fallback failed for {exchange_id}: {str(e)}")
+                    
             except ccxt.ExchangeNotAvailable as e:
                 error_msg = f"{exchange_id} is not available: {str(e)}"
                 exchange_errors.append(error_msg)
@@ -138,6 +188,19 @@ class ExchangeManager:
                 "Errors encountered:\n" + "\n".join(exchange_errors)
             )
             logger.error(error_message)
+            
+            # Show appropriate error message to users
+            if not (api_key and api_secret):
+                st.warning(
+                    "⚠️ Running in public API mode. Some features may be limited. "
+                    "For full functionality, please provide valid API credentials."
+                )
+            else:
+                st.error(
+                    "🚫 Unable to connect to exchanges. Please check your API credentials "
+                    "and ensure the exchange services are available in your region."
+                )
+            
             raise ccxt.ExchangeNotAvailable(error_message)
 
     async def enable_websocket(self, symbol: str, callback: callable) -> None:
