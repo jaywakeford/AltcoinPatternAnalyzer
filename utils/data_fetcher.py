@@ -8,10 +8,36 @@ import requests
 import time
 from datetime import datetime, timedelta
 from functools import partial
+import asyncio
+from .websocket_manager import websocket_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Cryptocurrency symbol mapping
+CRYPTO_SYMBOLS = {
+    'bitcoin': {
+        'primary': 'BTC/USDT',
+        'alternatives': ['BTC/USD', 'XBT/USD'],
+        'regional_pairs': {
+            'NA': ['BTC/USD', 'BTC/USDT'],
+            'EU': ['BTC/EUR', 'BTC/USDT'],
+            'ASIA': ['BTC/USDT', 'BTC/JPY']
+        },
+        'coingecko_id': 'bitcoin'
+    },
+    'ethereum': {
+        'primary': 'ETH/USDT',
+        'alternatives': ['ETH/USD', 'ETH/BTC'],
+        'regional_pairs': {
+            'NA': ['ETH/USD', 'ETH/USDT'],
+            'EU': ['ETH/EUR', 'ETH/USDT'],
+            'ASIA': ['ETH/USDT', 'ETH/JPY']
+        },
+        'coingecko_id': 'ethereum'
+    }
+}
 
 def detect_region() -> str:
     """Enhanced region detection with better error handling."""
@@ -40,50 +66,26 @@ def detect_region() -> str:
                     detected_region = 'GLOBAL'
                     if region in ['US', 'CA']:
                         detected_region = 'NA'
-                        logger.info(f"North American user detected: {region}")
-                    elif region in ['GB', 'IE']:
-                        detected_region = 'UK'
-                    elif region in ['CH', 'NO', 'SE', 'DK', 'FI'] or data.get('continent_code') == 'EU':
+                    elif region in ['GB', 'DE', 'FR', 'IT', 'ES']:
                         detected_region = 'EU'
-                    elif region in ['CN', 'JP', 'KR', 'SG', 'HK', 'IN']:
+                    elif region in ['JP', 'KR', 'CN', 'HK', 'SG']:
                         detected_region = 'ASIA'
                     
                     st.session_state.detected_region = detected_region
-                    logger.info(f"Region detected: {detected_region} (Country: {region})")
+                    logger.info(f"Detected region: {detected_region}")
                     return detected_region
                     
             except Exception as e:
                 logger.warning(f"Error with geolocation service {service}: {str(e)}")
                 continue
                 
+        # Default to GLOBAL if all services fail
+        logger.warning("Unable to detect region, defaulting to GLOBAL")
+        return 'GLOBAL'
+        
     except Exception as e:
-        logger.error(f"Error detecting region: {str(e)}")
-    
-    return 'GLOBAL'
-
-# Enhanced cryptocurrency symbol mapping with alternatives and regional fallbacks
-CRYPTO_SYMBOLS = {
-    'bitcoin': {
-        'primary': 'BTC/USDT',
-        'alternatives': ['BTC/USD', 'BTC/USDC'],
-        'regional_pairs': {
-            'NA': ['BTC/USD', 'BTC/USDC'],
-            'EU': ['BTC/EUR', 'BTC/USDT'],
-            'ASIA': ['BTC/USDT', 'BTC/JPY']
-        },
-        'coingecko_id': 'bitcoin'
-    },
-    'ethereum': {
-        'primary': 'ETH/USDT',
-        'alternatives': ['ETH/USD', 'ETH/USDC'],
-        'regional_pairs': {
-            'NA': ['ETH/USD', 'ETH/USDC'],
-            'EU': ['ETH/EUR', 'ETH/USDT'],
-            'ASIA': ['ETH/USDT', 'ETH/JPY']
-        },
-        'coingecko_id': 'ethereum'
-    }
-}
+        logger.error(f"Error in region detection: {str(e)}")
+        return 'GLOBAL'
 
 class ExchangeManager:
     def __init__(self):
@@ -92,29 +94,127 @@ class ExchangeManager:
         self.connection_status = {}
         self.retry_delays = [1, 2, 4]  # Exponential backoff
         self.region = detect_region()
-        self._initialize_exchanges()
+        self.websocket_enabled = False
+        self.websocket_callbacks = {}
+        self.active_exchange = None
+        self._initialize_exchange()
 
-    def _initialize_exchanges(self):
-        """Initialize exchanges with enhanced error handling and fallback mechanisms."""
-        exchange_ids = self._get_region_optimized_exchanges()
+    def _initialize_exchange(self):
+        """Initialize exchange with fallback options."""
+        exchange_errors = []
         
-        for exchange_id in exchange_ids:
+        for exchange_id in self._get_region_optimized_exchanges():
             try:
                 exchange_class = getattr(ccxt, exchange_id)
                 exchange = exchange_class({
                     'enableRateLimit': True,
                     'timeout': 30000,
-                    'enableLastJsonResponse': True,
+                    'apiKey': st.secrets.get("KRAKEN_API_KEY"),
+                    'secret': st.secrets.get("KRAKEN_SECRET"),
                 })
-                
-                # Test connection with retry mechanism
-                self._test_exchange_connection(exchange, exchange_id)
-                
+                # Test API access
+                exchange.load_markets()
+                self.active_exchange = exchange
+                self.exchanges[exchange_id] = exchange
+                logger.info(f"Successfully connected to {exchange_id}")
+                break
+            except ccxt.ExchangeNotAvailable as e:
+                error_msg = f"{exchange_id} is not available: {str(e)}"
+                exchange_errors.append(error_msg)
+                logger.warning(error_msg)
+            except ccxt.ExchangeError as e:
+                error_msg = f"Error connecting to {exchange_id}: {str(e)}"
+                exchange_errors.append(error_msg)
+                logger.warning(error_msg)
             except Exception as e:
-                self._handle_exchange_error(exchange_id, e)
+                error_msg = f"Unexpected error with {exchange_id}: {str(e)}"
+                exchange_errors.append(error_msg)
+                logger.error(error_msg)
+        
+        if not self.active_exchange:
+            error_message = (
+                "Unable to connect to any cryptocurrency exchange. "
+                "This might be due to regional restrictions or temporary service issues.\n"
+                "Errors encountered:\n" + "\n".join(exchange_errors)
+            )
+            logger.error(error_message)
+            raise ccxt.ExchangeNotAvailable(error_message)
 
-        # Initialize fallback sources
-        self._initialize_fallback_sources()
+    async def enable_websocket(self, symbol: str, callback: callable) -> None:
+        """Enable websocket connection for real-time data."""
+        try:
+            # Ensure exchange is initialized
+            if not self.active_exchange:
+                self._initialize_exchange()
+            
+            # Try primary exchange first
+            exchange_id = self.active_exchange.id
+            
+            # Register callback
+            self.websocket_callbacks[symbol] = callback
+            
+            # Connect to websocket
+            await websocket_manager.connect(
+                symbol=symbol,
+                exchange=exchange_id,
+                callback=self._handle_websocket_message
+            )
+            
+            self.websocket_enabled = True
+            logger.info(f"Enabled websocket for {symbol} on {exchange_id}")
+            
+        except Exception as e:
+            logger.error(f"Error enabling websocket: {str(e)}")
+            raise
+
+    async def disable_websocket(self, symbol: str) -> None:
+        """Disable websocket connection."""
+        try:
+            if symbol in self.websocket_callbacks:
+                exchange_id = self.active_exchange.id
+                await websocket_manager.disconnect(symbol, exchange_id)
+                del self.websocket_callbacks[symbol]
+                
+            self.websocket_enabled = False
+            logger.info(f"Disabled websocket for {symbol}")
+            
+        except Exception as e:
+            logger.error(f"Error disabling websocket: {str(e)}")
+            raise
+
+    async def _handle_websocket_message(self, message: dict) -> None:
+        """Process incoming websocket messages."""
+        try:
+            # Extract symbol from message (format depends on exchange)
+            symbol = self._extract_symbol_from_message(message)
+            
+            if symbol and symbol in self.websocket_callbacks:
+                await self.websocket_callbacks[symbol](message)
+                
+        except Exception as e:
+            logger.error(f"Error handling websocket message: {str(e)}")
+
+    def _extract_symbol_from_message(self, message: dict) -> Optional[str]:
+        """Extract symbol from websocket message based on exchange format."""
+        try:
+            if 'pair' in message:  # Kraken format
+                return message['pair'][0]
+            elif 'symbol' in message:  # KuCoin format
+                return message['symbol']
+            elif 'data' in message and 'symbol' in message['data']:
+                return message['data']['symbol']
+            return None
+        except Exception:
+            return None
+
+    async def cleanup(self) -> None:
+        """Cleanup resources including websocket connections."""
+        try:
+            await websocket_manager.disconnect_all()
+            self.websocket_enabled = False
+            self.websocket_callbacks.clear()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
 
     def _get_region_optimized_exchanges(self) -> List[str]:
         """Get region-optimized list of exchanges."""
@@ -326,17 +426,19 @@ def get_crypto_data(coin_id: str, days: str = '30') -> pd.DataFrame:
 
         data, source = exchange_manager.get_market_data(
             symbols['primary'],
-            limit=int(days)
+            timeframe='1d' if int(days) > 7 else '1h',
+            limit=int(days) * (24 if int(days) <= 7 else 1)
         )
-        
+
         if isinstance(data, pd.DataFrame) and not data.empty:
             st.session_state.data_source = source
             return data
-            
+
+        logger.warning(f"No data available from {source}, trying fallback sources...")
         return pd.DataFrame()
-            
+
     except Exception as e:
-        logger.error(f"Error fetching data: {str(e)}")
+        logger.error(f"Error fetching crypto data: {str(e)}")
         return pd.DataFrame()
 
 def get_exchange_status() -> Dict[str, Dict[str, Any]]:

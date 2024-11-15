@@ -87,16 +87,28 @@ class AltcoinAnalyzer:
                         symbol = market['symbol']
                         if symbol in tickers:
                             ticker = tickers[symbol]
-                            market_cap = float(ticker.get('quoteVolume', 0)) * float(ticker.get('last', 0))
-                            if market_cap > 0:  # Filter out zero market cap entries
-                                crypto_data.append({
-                                    'symbol': market['base'],
-                                    'market_cap': market_cap,
-                                    'volume_24h': float(ticker.get('quoteVolume', 0)),
-                                    'price': float(ticker.get('last', 0)),
-                                    'change_24h': float(ticker.get('percentage', 0)),
-                                    'momentum': float(ticker.get('change', 0))
-                                })
+                            
+                            # Ensure numeric conversions with validation
+                            try:
+                                volume = float(ticker.get('quoteVolume', 0))
+                                price = float(ticker.get('last', 0))
+                                change = float(ticker.get('percentage', 0))
+                                momentum = float(ticker.get('change', 0))
+                                
+                                if price > 0:  # Only include valid prices
+                                    market_cap = volume * price
+                                    crypto_data.append({
+                                        'symbol': market['base'],
+                                        'market_cap': market_cap,
+                                        'volume_24h': volume,
+                                        'price': price,
+                                        'change_24h': change,
+                                        'momentum': momentum
+                                    })
+                            except (TypeError, ValueError) as e:
+                                logger.warning(f"Error converting numeric data for {symbol}: {str(e)}")
+                                continue
+                                
                 except (TypeError, ValueError) as e:
                     logger.warning(f"Error processing market data for {market.get('symbol', 'unknown')}: {str(e)}")
                     continue
@@ -105,11 +117,24 @@ class AltcoinAnalyzer:
                 raise ValueError("No valid cryptocurrency data retrieved")
             
             df = pd.DataFrame(crypto_data)
+            
+            # Ensure numeric types for calculations
+            numeric_columns = ['market_cap', 'volume_24h', 'price', 'change_24h', 'momentum']
+            for col in numeric_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Drop any rows with invalid numeric data
+            df = df.dropna(subset=numeric_columns)
+            
+            if df.empty:
+                raise ValueError("No valid data after numeric conversion")
+                
             df = df.sort_values('market_cap', ascending=False).head(50)
             df['rank'] = range(1, len(df) + 1)
             df['category'] = df['rank'].apply(self._assign_category)
             
             return df
+            
         except ccxt.ExchangeNotAvailable as e:
             logger.error(f"Exchange not available: {str(e)}")
             st.error("Unable to access cryptocurrency exchange. This might be due to regional restrictions.")

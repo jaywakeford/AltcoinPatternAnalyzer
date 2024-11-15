@@ -4,12 +4,15 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "aiohttp>=3.10.10",
+    "asyncio>=3.4.3",
     "beautifulsoup4>=4.12.0",
     "ccxt==4.1.13",
     "cryptocompare>=0.7.6",
     "dataclasses>=0.8",
     "feedparser>=6.0.10",
-    "nltk>=3.8.1",
+    "nest-asyncio",
+    "nltk>=1.6.0",
     "numpy==1.24.3",
     "openai>=1.54.3",
     "pandas==2.0.3",
@@ -28,5 +31,6 @@ dependencies = [
     "textblob>=0.18.0.post0",
     "tweepy>=4.14.0",
     "vadersentiment>=3.3.2",
+    "websockets>=14.1",
     "yfinance==0.2.31",
 ]

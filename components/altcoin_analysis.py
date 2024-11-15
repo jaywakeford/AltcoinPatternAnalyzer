@@ -11,6 +11,61 @@ from utils.altcoin_analyzer import AltcoinAnalyzer
 
 logger = logging.getLogger(__name__)
 
+def _render_momentum_analysis(df: pd.DataFrame) -> None:
+    """Render momentum analysis visualization with proper type handling."""
+    try:
+        # Validate and convert numeric columns
+        df['change_24h'] = pd.to_numeric(df['change_24h'], errors='coerce')
+        df['volume_24h'] = pd.to_numeric(df['volume_24h'], errors='coerce')
+        
+        # Drop rows with invalid data
+        valid_data = df.dropna(subset=['change_24h', 'volume_24h'])
+        
+        if valid_data.empty:
+            st.warning("No valid data available for momentum analysis")
+            return
+            
+        # Get top momentum movers (using absolute change)
+        momentum_data = valid_data.nlargest(10, abs(valid_data['change_24h']))[
+            ['symbol', 'change_24h', 'volume_24h']
+        ]
+        
+        fig = go.Figure(data=[
+            go.Scatter(
+                x=momentum_data['change_24h'],
+                y=momentum_data['volume_24h'],
+                mode='markers+text',
+                text=momentum_data['symbol'],
+                textposition="top center",
+                marker=dict(
+                    size=abs(momentum_data['change_24h']) * 2,
+                    color=momentum_data['change_24h'],
+                    colorscale='RdYlGn',
+                    showscale=True
+                ),
+                hovertemplate="<b>%{text}</b><br>" +
+                             "Change: %{x:.2f}%<br>" +
+                             "Volume: $%{y:,.0f}<br>" +
+                             "<extra></extra>"
+            )
+        ])
+        
+        fig.update_layout(
+            title="Momentum Analysis",
+            height=400,
+            margin=dict(l=20, r=20, t=40, b=20),
+            template="plotly_dark",
+            xaxis_title="24h Change (%)",
+            yaxis_title="24h Volume ($)",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        logger.error(f"Error rendering momentum analysis: {str(e)}")
+        st.error("Unable to generate momentum analysis visualization. Please try again later.")
+
 def render_altcoin_analysis():
     """Main function to render altcoin analysis."""
     try:
@@ -344,44 +399,6 @@ def _render_volume_leaders(df: pd.DataFrame) -> None:
         height=400,
         margin=dict(l=20, r=20, t=40, b=20),
         template="plotly_dark",
-        showlegend=False
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-def _render_momentum_analysis(df: pd.DataFrame) -> None:
-    """Render momentum analysis visualization."""
-    momentum_data = df.nlargest(10, abs(df['change_24h']))[
-        ['symbol', 'change_24h', 'volume_24h']
-    ]
-    
-    fig = go.Figure(data=[
-        go.Scatter(
-            x=momentum_data['change_24h'],
-            y=momentum_data['volume_24h'],
-            mode='markers+text',
-            text=momentum_data['symbol'],
-            textposition="top center",
-            marker=dict(
-                size=abs(momentum_data['change_24h']) * 2,
-                color=momentum_data['change_24h'],
-                colorscale='RdYlGn',
-                showscale=True
-            ),
-            hovertemplate="<b>%{text}</b><br>" +
-                         "Change: %{x:.2f}%<br>" +
-                         "Volume: $%{y:,.0f}<br>" +
-                         "<extra></extra>"
-        )
-    ])
-    
-    fig.update_layout(
-        title="Momentum Analysis",
-        height=400,
-        margin=dict(l=20, r=20, t=40, b=20),
-        template="plotly_dark",
-        xaxis_title="24h Change (%)",
-        yaxis_title="24h Volume ($)",
         showlegend=False
     )
     
