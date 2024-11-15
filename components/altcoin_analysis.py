@@ -5,225 +5,159 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 from utils.altcoin_analyzer import AltcoinAnalyzer
 
 logger = logging.getLogger(__name__)
 
 def render_altcoin_analysis():
-    """Render the altcoin analysis interface."""
+    """Main entry point for altcoin analysis."""
     try:
-        st.subheader("🔄 Altcoin Analysis & Strategy")
+        analyzer = AltcoinAnalyzer()
+        df = analyzer.fetch_top_50_cryptocurrencies()
         
-        # Initialize analyzer with error handling
-        try:
-            analyzer = AltcoinAnalyzer()
-        except Exception as e:
-            st.error(f"Failed to initialize analyzer: {str(e)}")
-            st.info("Please try refreshing the page.")
+        if df.empty:
+            st.warning("Unable to fetch cryptocurrency data. Please try again later.")
             return
-        
-        # Fetch initial data with error handling
-        try:
-            df = analyzer.fetch_top_50_cryptocurrencies()
-            if df.empty:
-                st.warning("No cryptocurrency data available. Please try again later.")
-                return
-        except Exception as e:
-            st.error(f"Error fetching cryptocurrency data: {str(e)}")
-            return
-        
-        # Market filters
-        st.sidebar.subheader("Market Filters")
-        min_market_cap = st.sidebar.number_input(
-            "Minimum Market Cap (USD)",
-            min_value=0,
-            value=1000000,
-            step=1000000
-        )
-        
-        min_volume = st.sidebar.number_input(
-            "Minimum 24h Volume (USD)",
-            min_value=0,
-            value=100000,
-            step=100000
-        )
-        
-        min_momentum = st.sidebar.slider(
-            "Minimum Momentum Score",
-            min_value=-100,
-            max_value=100,
-            value=-20
-        )
-        
-        # Filter data
-        filtered_df = df[
-            (df['market_cap'] >= min_market_cap) &
-            (df['volume_24h'] >= min_volume) &
-            (df['momentum'] >= min_momentum)
-        ]
-        
-        if filtered_df.empty:
-            st.warning("No cryptocurrencies match the selected filters. Please adjust your criteria.")
-            return
-        
-        # Main content tabs
-        tabs = st.tabs([
-            "Market Overview",
-            "Historical Analysis",
-            "Correlation Analysis"
+            
+        tab1, tab2, tab3 = st.tabs([
+            "🔄 Historical Analysis",
+            "📊 Real-time Analysis",
+            "🔗 Correlation Analysis"
         ])
         
-        with tabs[0]:
-            _render_market_overview(filtered_df)
-        
-        with tabs[1]:
-            _render_historical_analysis(analyzer, filtered_df)
-        
-        with tabs[2]:
+        with tab1:
+            _render_historical_analysis(analyzer, df)
+            
+        with tab2:
+            _render_realtime_analysis(analyzer, df)
+            
+        with tab3:
             _render_correlation_analysis(analyzer)
             
     except Exception as e:
-        logger.error(f"Error in render_altcoin_analysis: {str(e)}")
-        st.error("An unexpected error occurred. Please try refreshing the page.")
+        logger.error(f"Error in altcoin analysis: {str(e)}")
+        st.error("An error occurred while analyzing altcoin data. Please try again later.")
 
-def _render_historical_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame):
-    """Render historical analysis section with enhanced visualization and guidance."""
+def _get_trend_description(momentum: float) -> str:
+    """Get trend description based on momentum value."""
+    if momentum > 50:
+        return "Strongly Bullish 🚀"
+    elif momentum > 25:
+        return "Moderately Bullish 📈"
+    elif momentum > 0:
+        return "Slightly Bullish ↗️"
+    elif momentum > -25:
+        return "Slightly Bearish ↘️"
+    elif momentum > -50:
+        return "Moderately Bearish 📉"
+    else:
+        return "Strongly Bearish 🔻"
+
+def _render_momentum_distribution(df: pd.DataFrame, sequence_data: Dict) -> None:
+    """Render enhanced momentum distribution visualization."""
     try:
+        if 'momentum_scores' not in sequence_data:
+            st.warning("No momentum data available for the selected period.")
+            return
+
+        # User Guidance
         st.markdown("""
-        ### Historical Sequence Analysis
+        ### 📊 Market Momentum Analysis Guide
         
-        This section provides detailed insights into market momentum and capital flow patterns:
+        This visualization helps you understand market momentum across different cryptocurrency segments:
         
-        - **Bitcoin Dominance Flow**: Track how market cap moves from BTC to altcoins
-        - **Cohort Analysis**: Compare performance across different market segments
-        - **Investment Sequencing**: Identify optimal entry and exit points
-        - **Strategy Guidance**: Get clear investment and exit strategies
+        #### How to Read the Charts:
+        1. **Top Chart**: Shows overall momentum distribution
+           - Higher bars indicate more coins in that momentum range
+           - Color-coded by market cap category
+           
+        2. **Bottom Chart**: Shows momentum comparison across categories
+           - Box plots show the spread of momentum values
+           - Outliers indicate extreme performers
         
-        *💡 Use the interactive controls to customize your analysis view.*
+        #### Momentum Zones:
+        - 🟢 Strong Bullish (>75): Strong upward trend
+        - 🟡 Weak Bullish (25-75): Moderate upward movement
+        - ⚪ Neutral (-25 to 25): Sideways movement
+        - 🟠 Weak Bearish (-75 to -25): Moderate downward trend
+        - 🔴 Strong Bearish (<-75): Strong downward trend
+        
+        💡 **Tip**: Hover over the charts for detailed information about each data point.
         """)
+
+        # Convert momentum scores to pandas DataFrame
+        momentum_df = pd.DataFrame.from_dict(
+            sequence_data['momentum_scores'],
+            orient='index',
+            columns=['momentum']
+        ).reset_index().rename(columns={'index': 'symbol'})
         
-        # Add interactive timeframe selector
-        timeframe = st.selectbox(
-            "Analysis Timeframe",
-            ["7d", "30d", "90d", "180d", "1y"],
-            help="Select historical analysis period"
-        )
-        
-        # Convert timeframe to days for analysis
-        days_map = {
-            "7d": 7,
-            "30d": 30,
-            "90d": 90,
-            "180d": 180,
-            "1y": 365
+        # Convert momentum values to float
+        momentum_df['momentum'] = pd.to_numeric(momentum_df['momentum'], errors='coerce')
+
+        # Create cohorts
+        cohorts = {
+            'Large Caps': momentum_df[momentum_df['symbol'].isin(df[df['category'] == 'Large Cap'].symbol)],
+            'Mid Caps': momentum_df[momentum_df['symbol'].isin(df[df['category'] == 'Mid Cap'].symbol)],
+            'Small Caps': momentum_df[momentum_df['symbol'].isin(df[df['category'] == 'Lower Cap'].symbol)]
         }
-        lookback_days = days_map[timeframe]
-        
-        # Get historical sequence data with error handling
-        with st.spinner("Analyzing historical patterns..."):
-            try:
-                sequence_data = analyzer.analyze_historical_sequence(
-                    timeframe='1d',
-                    lookback_days=lookback_days
-                )
-                
-                if not sequence_data:
-                    st.warning("No historical data available for analysis. Please try adjusting the lookback period.")
-                    return
-                    
-            except Exception as e:
-                st.error(f"Error analyzing historical data: {str(e)}")
-                return
-        
-        # Create waterfall visualization
-        st.markdown("### 🌊 Bitcoin Dominance Waterfall Analysis")
-        
-        # Create multi-panel visualization
+
+        # Create visualization
         fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=(
-                "BTC Dominance Flow",
-                "Cohort Market Cap Distribution",
-                "Sequential Altcoin Gains",
-                "Exit Strategy Heatmap"
-            ),
-            specs=[[{"type": "waterfall"}, {"type": "pie"}],
-                   [{"type": "scatter"}, {"type": "heatmap"}]]
+            rows=2, cols=1,
+            subplot_titles=('Overall Momentum Distribution', 'Momentum by Market Cap Category'),
+            vertical_spacing=0.2,
+            specs=[[{"type": "histogram"}], [{"type": "box"}]],
+            row_heights=[0.6, 0.4]
         )
-        
-        # Add BTC Dominance Flow (Waterfall)
-        if 'investment_sequence' in sequence_data:
-            for phase, coins in sequence_data['investment_sequence'].items():
-                momentum_values = [sequence_data.get('momentum_scores', {}).get(coin, 0) for coin in coins]
-                if momentum_values:
-                    fig.add_trace(
-                        go.Waterfall(
-                            name=phase,
-                            orientation="v",
-                            measure=["relative"] * len(coins),
-                            x=coins,
-                            y=momentum_values,
-                            connector={"line": {"color": "rgb(63, 63, 63)"}},
-                            decreasing={"marker": {"color": "red"}},
-                            increasing={"marker": {"color": "green"}},
-                            text=[f"{coin}: {val:.1f}%" for coin, val in zip(coins, momentum_values)],
-                            textposition="outside"
+
+        # Add histograms
+        colors = ['rgba(23, 195, 123, 0.6)', '#FF9900', '#00FFFF']
+        for i, (cohort_name, cohort_data) in enumerate(cohorts.items()):
+            if not cohort_data.empty:
+                fig.add_trace(
+                    go.Histogram(
+                        x=cohort_data['momentum'].values,
+                        name=cohort_name,
+                        nbinsx=30,
+                        marker_color=colors[i],
+                        opacity=0.7,
+                        hovertemplate=(
+                            "<b>%{text}</b><br>" +
+                            "Momentum: %{x:.1f}<br>" +
+                            "Count: %{y}<br>" +
+                            "<extra></extra>"
                         ),
-                        row=1, col=1
-                    )
-        
-        # Add Cohort Market Cap Distribution (Pie)
-        if not df.empty and 'category' in df.columns:
-            cohort_data = df.groupby('category')['market_cap'].sum()
-            fig.add_trace(
-                go.Pie(
-                    labels=cohort_data.index,
-                    values=cohort_data.values,
-                    hole=0.4,
-                    textinfo='label+percent'
-                ),
-                row=1, col=2
-            )
-        
-        # Add Sequential Altcoin Gains (Scatter)
-        if 'investment_sequence' in sequence_data:
-            for phase, coins in sequence_data['investment_sequence'].items():
-                momentum_values = [sequence_data.get('momentum_scores', {}).get(coin, 0) for coin in coins]
-                if momentum_values:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=list(range(len(coins))),
-                            y=momentum_values,
-                            mode='markers+text',
-                            name=phase,
-                            text=coins,
-                            textposition="top center"
-                        ),
-                        row=2, col=1
-                    )
-        
-        # Add Exit Strategy Heatmap
-        if 'exit_strategy' in sequence_data:
-            categories = ['Large Cap', 'Mid Cap', 'Small Cap']
-            timeframes = ['Short-term', 'Mid-term', 'Long-term']
-            exit_data = np.random.rand(len(categories), len(timeframes))  # Placeholder data
-            
-            fig.add_trace(
-                go.Heatmap(
-                    z=exit_data,
-                    x=timeframes,
-                    y=categories,
-                    colorscale='RdYlGn'
-                ),
-                row=2, col=2
-            )
-        
-        # Update layout with enhanced styling
+                        text=[cohort_name] * len(cohort_data)
+                    ),
+                    row=1, col=1
+                )
+
+        # Add box plots
+        for i, (cohort_name, cohort_data) in enumerate(cohorts.items()):
+            if not cohort_data.empty:
+                fig.add_trace(
+                    go.Box(
+                        x=cohort_data['momentum'].values,
+                        name=cohort_name,
+                        marker_color=colors[i],
+                        boxpoints='outliers',
+                        hovertemplate=(
+                            f"<b>{cohort_name}</b><br>" +
+                            "Momentum: %{x:.1f}<br>" +
+                            "<extra></extra>"
+                        )
+                    ),
+                    row=2, col=1
+                )
+
+        # Update layout
         fig.update_layout(
-            title="Market Cap Flow Analysis",
-            height=800,
-            template="plotly_dark",
+            title=dict(
+                text="Market Momentum Distribution",
+                font=dict(size=20)
+            ),
             showlegend=True,
             legend=dict(
                 orientation="h",
@@ -231,91 +165,282 @@ def _render_historical_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame):
                 y=1.02,
                 xanchor="right",
                 x=1
+            ),
+            template="plotly_dark",
+            height=800,
+            margin=dict(l=50, r=50, t=100, b=50)
+        )
+
+        # Add momentum zones
+        zones = [
+            (-75, "Strong Bearish", "red"),
+            (-25, "Weak Bearish", "orange"),
+            (25, "Weak Bullish", "lightgreen"),
+            (75, "Strong Bullish", "green")
+        ]
+        
+        for zone_value, zone_text, zone_color in zones:
+            # Add vertical lines for both plots
+            fig.add_vline(
+                x=float(zone_value),
+                line_dash="dash",
+                line_color="gray",
+                row="1", col="1"
             )
+            fig.add_vline(
+                x=float(zone_value),
+                line_dash="dash",
+                line_color="gray",
+                row="2", col="1"
+            )
+            
+            # Add zone labels
+            fig.add_annotation(
+                x=float(zone_value),
+                y=1,
+                text=zone_text,
+                showarrow=False,
+                font=dict(color=zone_color),
+                row="1", col="1"
+            )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Add cohort insights
+        st.markdown("### 📈 Market Cohort Analysis")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        for col, (cohort_name, cohort_data) in zip([col1, col2, col3], cohorts.items()):
+            with col:
+                if not cohort_data.empty:
+                    momentum_values = cohort_data['momentum'].values
+                    median_momentum = float(np.median(momentum_values))
+                    volatility = float(np.std(momentum_values))
+                    trend = _get_trend_description(float(np.mean(momentum_values)))
+
+                    st.info(f"""
+                    **{cohort_name}** ({len(cohort_data)} coins)
+                    - **Median Momentum:** {median_momentum:.1f}
+                    - **Volatility:** {volatility:.1f}
+                    - **Current Trend:** {trend}
+                    """)
+                else:
+                    st.info(f"**{cohort_name}**: No data available")
+
+        # Add market action suggestions
+        st.markdown("""
+        ### 🎯 Suggested Market Actions
+        
+        Based on the momentum analysis above:
+        
+        1. **Strong Momentum (>75)**
+        - Consider taking profits on highly bullish assets
+        - Set trailing stops to protect gains
+        
+        2. **Moderate Momentum (25-75)**
+        - Look for entry points on pullbacks
+        - Consider scaling into positions
+        
+        3. **Neutral Zone (-25 to 25)**
+        - Focus on accumulation strategies
+        - Watch for breakout opportunities
+        
+        4. **Weak Momentum (-75 to -25)**
+        - Exercise caution with new positions
+        - Consider reducing exposure
+        
+        5. **Strong Bearish (<-75)**
+        - Wait for momentum reversal signals
+        - Consider hedging strategies
+        
+        💡 **Remember**: Always combine this analysis with other technical and fundamental factors before making trading decisions.
+        """)
+
+    except Exception as e:
+        logger.error(f"Error rendering momentum distribution: {str(e)}")
+        st.error("An error occurred while rendering the momentum distribution visualization. Please try again later.")
+
+def _render_correlation_analysis(analyzer: AltcoinAnalyzer) -> None:
+    """Render correlation analysis section with enhanced visualization."""
+    try:
+        st.markdown("### 📊 Correlation Analysis")
+        
+        timeframe = st.selectbox(
+            "Select Correlation Timeframe",
+            ["7d", "30d", "90d"],
+            index=1,
+            help="Choose the period for correlation analysis"
         )
         
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Add narrative insights panel
-        if 'investment_sequence' in sequence_data and 'exit_strategy' in sequence_data:
-            st.markdown("### 📊 Market Flow Insights")
+        if timeframe:
+            historical_days = int(timeframe.replace('d', ''))
+            correlation_data = analyzer.analyze_btc_correlation(
+                timeframe='1d',
+                lookback_days=historical_days
+            )
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### Sequential Investment Opportunities")
-                for phase, coins in sequence_data['investment_sequence'].items():
-                    st.info(f"**{phase}**\n" + "\n".join([f"• {coin}" for coin in coins]))
-            
-            with col2:
-                st.markdown("#### Exit Strategy Guide")
-                for category, strategy in sequence_data['exit_strategy'].items():
-                    st.success(f"**{category}**\n{strategy}")
+            if correlation_data and correlation_data.get('cooling_periods'):
+                st.markdown("""
+                ### Understanding Cooling Periods
+                
+                Cooling periods are times when Bitcoin's price action shows reduced volatility 
+                or consolidation. These periods often present opportunities in the altcoin market:
+                
+                - 🔵 Blue zones indicate BTC cooling periods
+                - Higher cooling period duration often correlates with stronger altcoin moves
+                - Pay attention to volume patterns during these periods
+                """)
+                
+                # Create visualization
+                fig = make_subplots(
+                    rows=2, cols=1,
+                    subplot_titles=('BTC Price with Cooling Periods', 'Market Impact Analysis'),
+                    vertical_spacing=0.2,
+                    row_heights=[0.6, 0.4]
+                )
+                
+                # Add BTC price line
+                if 'btc_price' in correlation_data:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=pd.date_range(
+                                end=pd.Timestamp.now(),
+                                periods=len(correlation_data['btc_price']),
+                                freq='D'
+                            ),
+                            y=correlation_data['btc_price'],
+                            name="BTC Price",
+                            line=dict(color='#F7931A', width=2)
+                        ),
+                        row="1", col="1"
+                    )
+                
+                # Add cooling period overlays
+                for period in correlation_data['cooling_periods']:
+                    start_date = pd.Timestamp(period['start'])
+                    end_date = pd.Timestamp(period['end'])
+                    
+                    fig.add_vrect(
+                        x0=start_date,
+                        x1=end_date,
+                        fillcolor="rgba(0,0,255,0.2)",
+                        layer="below",
+                        line_width=0,
+                        row="1", col="1"
+                    )
+                
+                fig.update_layout(
+                    height=800,
+                    showlegend=True,
+                    template="plotly_dark",
+                    title=dict(
+                        text="Bitcoin Cooling Periods Analysis",
+                        font=dict(size=20)
+                    ),
+                    xaxis_title="Date",
+                    yaxis_title="BTC Price (USD)"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Display cooling period statistics
+                st.markdown("#### Cooling Period Statistics")
+                for i, period in enumerate(correlation_data['cooling_periods'], 1):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.info(f"""
+                        **Period {i}**
+                        - Duration: {period['duration']:.1f} days
+                        - Price Change: {period.get('price_change', 0):.2f}%
+                        """)
+            else:
+                st.info("No cooling periods detected in the selected timeframe.")
+                
+    except Exception as e:
+        logger.error(f"Error in correlation analysis: {str(e)}")
+        st.error("An error occurred while analyzing correlations. Please try again later.")
+
+def _render_historical_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> None:
+    """Render historical analysis section with improved visualization."""
+    try:
+        st.markdown("""
+        ### 📈 Historical Analysis
         
+        This section provides insights into historical market patterns and momentum:
+        - Analyze momentum distribution across different market segments
+        - Track altcoin performance during Bitcoin's cooling periods
+        - Identify potential market opportunities
+        """)
+        
+        # Add timeframe selector
+        timeframe = st.selectbox(
+            "Select Analysis Timeframe",
+            ["7d", "30d", "90d", "180d", "1y"],
+            index=1,
+            help="Choose the period for historical analysis"
+        )
+
+        # Convert timeframe to days
+        days_map = {
+            "7d": 7,
+            "30d": 30,
+            "90d": 90,
+            "180d": 180,
+            "1y": 365
+        }
+        
+        lookback_days = days_map.get(timeframe, 30)
+        
+        with st.spinner("Analyzing historical patterns..."):
+            sequence_data = analyzer.analyze_historical_sequence(
+                timeframe='1d',
+                lookback_days=lookback_days
+            )
+            
+            if sequence_data:
+                _render_momentum_distribution(df, sequence_data)
+            else:
+                st.warning("No historical data available for analysis. Please try again later.")
+
     except Exception as e:
         logger.error(f"Error in historical analysis: {str(e)}")
-        st.error("An error occurred while rendering the historical analysis. Please try again later.")
+        st.error("An error occurred while analyzing historical data. Please try again later.")
 
-def _render_market_overview(df: pd.DataFrame):
-    """Render market overview section."""
+def _render_realtime_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> None:
+    """Render real-time analysis section."""
     try:
-        st.markdown("### Market Overview")
+        st.markdown("### 📊 Real-time Market Analysis")
         
-        if df.empty:
-            st.warning("No market data available for overview.")
-            return
+        update_interval = st.selectbox(
+            "Update Interval",
+            ["1m", "5m", "15m", "30m", "1h"],
+            index=2,
+            help="Select data refresh interval"
+        )
         
-        # Category distribution
-        if 'category' in df.columns:
-            category_counts = df['category'].value_counts()
-            
-            fig = px.pie(
-                values=category_counts.values,
-                names=category_counts.index,
-                title="Market Cap Distribution",
-                color_discrete_sequence=px.colors.qualitative.Set3
-            )
-            st.plotly_chart(fig, use_container_width=True)
-        
-        # Market metrics table
-        st.markdown("### Market Metrics by Category")
-        metrics_df = df.groupby('category').agg({
-            'market_cap': 'sum',
-            'volume_24h': 'sum',
-            'change_24h': 'mean',
-            'momentum': 'mean'
-        }).round(2)
-        
-        st.dataframe(metrics_df)
-        
-        # Top movers
-        st.markdown("### Top Movers")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Top Gainers (24h)**")
-            gainers = df.nlargest(5, 'change_24h')[
-                ['symbol', 'category', 'change_24h', 'volume_24h']
-            ]
-            st.dataframe(gainers)
+            _render_market_overview(df)
         
         with col2:
-            st.markdown("**Top Volume**")
-            volume_leaders = df.nlargest(5, 'volume_24h')[
-                ['symbol', 'category', 'volume_24h', 'change_24h']
-            ]
-            st.dataframe(volume_leaders)
-            
+            st.markdown("#### Top Movers")
+            if not df.empty:
+                top_movers = df.nlargest(5, 'change_24h')[
+                    ['symbol', 'change_24h', 'volume_24h']
+                ].copy()
+                
+                st.dataframe(
+                    top_movers.style.format({
+                        'change_24h': '{:,.2f}%',
+                        'volume_24h': '${:,.0f}'
+                    }),
+                    use_container_width=True
+                )
+            else:
+                st.warning("No market data available")
+                
     except Exception as e:
-        logger.error(f"Error in market overview: {str(e)}")
-        st.error("An error occurred while rendering the market overview. Please try again later.")
-
-def _render_correlation_analysis(analyzer: AltcoinAnalyzer):
-    """Render correlation analysis section."""
-    try:
-        st.markdown("### Correlation Analysis")
-        # Add correlation analysis implementation here
-        st.info("Correlation analysis feature coming soon.")
-        
-    except Exception as e:
-        logger.error(f"Error in correlation analysis: {str(e)}")
-        st.error("An error occurred while rendering the correlation analysis. Please try again later.")
+        logger.error(f"Error in real-time analysis: {str(e)}")
+        st.error("An error occurred while updating real-time analysis. Please try again later.")

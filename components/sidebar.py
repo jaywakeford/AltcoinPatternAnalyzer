@@ -21,10 +21,7 @@ def get_exchange_config() -> Dict[str, Any]:
         return {}
 
 def render_sidebar() -> Optional[Dict[str, Any]]:
-    """
-    Render the sidebar with enhanced filtering options and exchange status.
-    Returns configuration dictionary or None if error occurs.
-    """
+    """Render the sidebar with enhanced filtering options and exchange status."""
     try:
         st.sidebar.title("Analysis Settings")
         
@@ -175,3 +172,6 @@ def render_sidebar() -> Optional[Dict[str, Any]]:
         show_error("Sidebar Error", str(e))
         st.sidebar.warning("Some features may be limited. Please refresh the page.")
         return None
+
+if __name__ == "__main__":
+    render_sidebar()

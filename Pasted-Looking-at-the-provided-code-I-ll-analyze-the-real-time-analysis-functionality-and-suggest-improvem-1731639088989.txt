@@ -1,0 +1,142 @@
+Looking at the provided code, I'll analyze the real-time analysis functionality and suggest improvements to ensure full functionality.
+
+Current Implementation Analysis:
+
+The real-time analysis is part of _render_realtime_analysis in components/altcoin_analysis.py.
+Let's improve it step by step:
+
+Data Fetching Layer:
+Already implemented in data_fetcher.py with:
+Multiple exchange support
+Error handling
+Caching
+Rate limiting protection
+Missing Real-time Update Functionality:
+Let's implement continuous updates based on the selected interval:
+def _render_realtime_analysis(analyzer: AltcoinAnalyzer, df: pd.DataFrame) -> None:
+    """Render real-time analysis section with auto-updates."""
+    try:
+        st.markdown("### 📊 Real-time Market Analysis")
+        
+        # Interval selection with proper time calculations
+        intervals = {
+            "1m": 60,
+            "5m": 300,
+            "15m": 900,
+            "30m": 1800,
+            "1h": 3600
+        }
+        
+        update_interval = st.selectbox(
+            "Update Interval",
+            list(intervals.keys()),
+            index=2,
+            help="Select data refresh interval"
+        )
+        
+        # Add auto-refresh toggle
+        auto_refresh = st.toggle("Enable Auto-refresh", value=True)
+        
+        if auto_refresh:
+            st.empty()
+            time_placeholder = st.empty()
+            
+            # Update time display
+            current_time = datetime.now().strftime("%H:%M:%S")
+            time_placeholder.markdown(f"Last Updated: {current_time}")
+            
+            if st.session_state.get('last_update') is None:
+                st.session_state.last_update = datetime.now()
+            
+            # Check if it's time to update
+            time_diff = (datetime.now() - st.session_state.last_update).total_seconds()
+            if time_diff >= intervals[update_interval]:
+                df = analyzer.fetch_top_50_cryptocurrencies()  # Refresh data
+                st.session_state.last_update = datetime.now()
+        
+        # Split into two columns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            _render_market_overview(df)
+            
+            # Add volume analysis
+            st.markdown("#### Volume Analysis")
+            volume_data = df.nlargest(10, 'volume_24h')[['symbol', 'volume_24h', 'price']]
+            st.dataframe(
+                volume_data.style.format({
+                    'volume_24h': '${:,.0f}',
+                    'price': '${:,.2f}'
+                }),
+                use_container_width=True
+            )
+        
+        with col2:
+            # Top movers (both gainers and losers)
+            st.markdown("#### Top Movers (24h)")
+            gainers = df.nlargest(5, 'change_24h')
+            losers = df.nsmallest(5, 'change_24h')
+            
+            # Combine and display
+            movers = pd.concat([gainers, losers])[['symbol', 'change_24h', 'volume_24h']]
+            st.dataframe(
+                movers.style.format({
+                    'change_24h': '{:+.2f}%',
+                    'volume_24h': '${:,.0f}'
+                }).background_gradient(subset=['change_24h'], cmap='RdYlGn'),
+                use_container_width=True
+            )
+            
+            # Add momentum indicators
+            st.markdown("#### Momentum Indicators")
+            momentum_data = analyzer.calculate_momentum_indicators(df)
+            st.dataframe(momentum_data, use_container_width=True)
+            
+    except Exception as e:
+        logger.error(f"Error in real-time analysis: {str(e)}")
+        st.error("An error occurred while updating real-time data. Please try again.")
+Add Helper Function for Market Overview:
+def _render_market_overview(df: pd.DataFrame) -> None:
+    """Render market overview metrics."""
+    st.markdown("#### Market Overview")
+    
+    # Calculate market metrics
+    total_market_cap = df['market_cap'].sum()
+    total_volume = df['volume_24h'].sum()
+    avg_change = df['change_24h'].mean()
+    
+    # Display metrics in columns
+    mcol1, mcol2, mcol3 = st.columns(3)
+    
+    with mcol1:
+        st.metric(
+            "Total Market Cap",
+            f"${total_market_cap:,.0f}",
+            delta=f"{df['market_cap'].pct_change().mean():.2f}%"
+        )
+    
+    with mcol2:
+        st.metric(
+            "24h Volume",
+            f"${total_volume:,.0f}",
+            delta=f"{df['volume_24h'].pct_change().mean():.2f}%"
+        )
+    
+    with mcol3:
+        st.metric(
+            "Avg 24h Change",
+            f"{avg_change:.2f}%",
+            delta=f"{avg_change:.2f}%"
+        )
+Integration with Analysis Components:
+Make sure to add this to the main render_altcoin_analysis function in the real-time tab.
+This implementation provides:
+
+Auto-refresh functionality with configurable intervals
+Real-time market overview with key metrics
+Top movers analysis (both gainers and losers)
+Volume analysis
+Momentum indicators
+Error handling and logging
+Clean UI with organized sections
+Data caching and efficient updates

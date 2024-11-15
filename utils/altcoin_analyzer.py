@@ -508,3 +508,256 @@ class AltcoinAnalyzer:
         except Exception as e:
             st.error(f"Error calculating strategy: {str(e)}")
             return {}
+            
+    def analyze_btc_pairs(self, pairs: List[str] = None, timeframe: str = '1h') -> Dict:
+        """Track BTC trading pairs performance."""
+        if pairs is None:
+            pairs = ['ETH/BTC', 'XRP/BTC', 'DOT/BTC', 'ADA/BTC']
+            
+        try:
+            self._ensure_exchange_connection()
+            pair_data = {}
+            
+            for pair in pairs:
+                try:
+                    ohlcv = self.active_exchange.fetch_ohlcv(pair, timeframe)
+                    if ohlcv:
+                        df = pd.DataFrame(
+                            ohlcv,
+                            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                        )
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+                        df.set_index('timestamp', inplace=True)
+                        
+                        # Calculate metrics
+                        df['change'] = df['close'].pct_change()
+                        df['volatility'] = df['close'].rolling(24).std()
+                        df['correlation'] = df['close'].rolling(24).corr(df['volume'])
+                        
+                        pair_data[pair] = {
+                            'data': df,
+                            'metrics': {
+                                'current_price': df['close'].iloc[-1],
+                                'daily_change': df['change'].iloc[-1] * 100,
+                                'volatility': df['volatility'].iloc[-1],
+                                'volume': df['volume'].iloc[-1]
+                            }
+                        }
+                except Exception as e:
+                    logger.warning(f"Error fetching data for {pair}: {str(e)}")
+                    continue
+                    
+            return pair_data
+            
+        except Exception as e:
+            logger.error(f"Error analyzing BTC pairs: {str(e)}")
+            return {}
+            
+    def detect_dominance_breakouts(self, threshold: float = 0.1) -> Dict:
+        """Identify coins breaking from BTC correlation."""
+        try:
+            df = self.fetch_top_50_cryptocurrencies()
+            if df.empty:
+                return {}
+                
+            breakouts = {
+                'positive': [],
+                'negative': [],
+                'metrics': {}
+            }
+            
+            btc_data = self.active_exchange.fetch_ohlcv('BTC/USDT', '1h', limit=24)
+            if not btc_data:
+                return breakouts
+                
+            btc_df = pd.DataFrame(
+                btc_data,
+                columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+            )
+            btc_returns = pd.Series(btc_df['close']).pct_change()
+            
+            for _, coin in df.iterrows():
+                try:
+                    symbol = f"{coin['symbol']}/USDT"
+                    coin_data = self.active_exchange.fetch_ohlcv(symbol, '1h', limit=24)
+                    if coin_data:
+                        coin_df = pd.DataFrame(
+                            coin_data,
+                            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                        )
+                        coin_returns = pd.Series(coin_df['close']).pct_change()
+                        
+                        # Calculate correlation
+                        correlation = coin_returns.corr(btc_returns)
+                        
+                        # Calculate relative strength
+                        relative_strength = (
+                            coin_returns.iloc[-1] - btc_returns.iloc[-1]
+                        )
+                        
+                        if abs(relative_strength) > threshold:
+                            breakout_data = {
+                                'symbol': coin['symbol'],
+                                'strength': relative_strength,
+                                'correlation': correlation,
+                                'volume_change': (
+                                    coin_df['volume'].iloc[-1] / 
+                                    coin_df['volume'].iloc[0] - 1
+                                ) * 100
+                            }
+                            
+                            if relative_strength > 0:
+                                breakouts['positive'].append(breakout_data)
+                            else:
+                                breakouts['negative'].append(breakout_data)
+                                
+                            breakouts['metrics'][coin['symbol']] = {
+                                'relative_strength': relative_strength,
+                                'correlation': correlation,
+                                'volume_change': breakout_data['volume_change']
+                            }
+                            
+                except Exception as e:
+                    logger.warning(f"Error processing breakout for {coin['symbol']}: {str(e)}")
+                    continue
+                    
+            # Sort breakouts by strength
+            breakouts['positive'] = sorted(
+                breakouts['positive'],
+                key=lambda x: x['strength'],
+                reverse=True
+            )
+            breakouts['negative'] = sorted(
+                breakouts['negative'],
+                key=lambda x: x['strength']
+            )
+            
+            return breakouts
+            
+        except Exception as e:
+            logger.error(f"Error detecting dominance breakouts: {str(e)}")
+            return {}
+            
+    def predict_next_phase(self, historical_days: int = 30) -> Dict:
+        """Project next altcoin phase based on historical patterns."""
+        try:
+            sequence_data = self.analyze_historical_sequence(
+                timeframe='1d',
+                lookback_days=historical_days
+            )
+            
+            if not sequence_data:
+                return {}
+                
+            current_phase = self._determine_current_phase(sequence_data)
+            if not current_phase:
+                return {}
+                
+            phase_predictions = {
+                'current_phase': current_phase,
+                'next_phase': self._project_next_phase(current_phase),
+                'confidence': self._calculate_prediction_confidence(sequence_data),
+                'indicators': self._get_phase_indicators(sequence_data),
+                'recommended_actions': self._generate_phase_recommendations(
+                    current_phase,
+                    sequence_data
+                )
+            }
+            
+            return phase_predictions
+            
+        except Exception as e:
+            logger.error(f"Error predicting next phase: {str(e)}")
+            return {}
+            
+    def _determine_current_phase(self, sequence_data: Dict) -> Optional[str]:
+        """Determine the current market phase."""
+        try:
+            if not sequence_data.get('momentum_scores'):
+                return None
+                
+            momentum_scores = pd.Series(sequence_data['momentum_scores'])
+            
+            # Calculate phase indicators
+            large_cap_momentum = momentum_scores.head(10).mean()
+            mid_cap_momentum = momentum_scores[10:25].mean()
+            small_cap_momentum = momentum_scores[25:].mean()
+            
+            if large_cap_momentum > mid_cap_momentum and large_cap_momentum > small_cap_momentum:
+                return 'phase1'
+            elif mid_cap_momentum > large_cap_momentum and mid_cap_momentum > small_cap_momentum:
+                return 'phase2'
+            else:
+                return 'phase3'
+                
+        except Exception as e:
+            logger.error(f"Error determining current phase: {str(e)}")
+            return None
+            
+    def _project_next_phase(self, current_phase: str) -> str:
+        """Project the next market phase."""
+        phase_sequence = {
+            'phase1': 'phase2',
+            'phase2': 'phase3',
+            'phase3': 'phase1'
+        }
+        return phase_sequence.get(current_phase, 'phase1')
+        
+    def _calculate_prediction_confidence(self, sequence_data: Dict) -> float:
+        """Calculate confidence level for phase prediction."""
+        try:
+            if not sequence_data.get('momentum_scores'):
+                return 0.0
+                
+            momentum_scores = pd.Series(sequence_data['momentum_scores'])
+            
+            # Calculate metrics
+            momentum_std = momentum_scores.std()
+            momentum_trend = momentum_scores.diff().mean()
+            volume_consistency = sequence_data.get('volume_consistency', 0.5)
+            
+            # Normalize metrics
+            confidence = (
+                (1 - min(momentum_std / 100, 1)) * 0.4 +  # Lower volatility = higher confidence
+                (abs(momentum_trend) / 10) * 0.3 +        # Stronger trend = higher confidence
+                volume_consistency * 0.3                   # Consistent volume = higher confidence
+            )
+            
+            return min(max(confidence, 0.0), 1.0)
+            
+        except Exception:
+            return 0.0
+            
+    def _get_phase_indicators(self, sequence_data: Dict) -> Dict:
+        """Get key indicators for the current market phase."""
+        return {
+            'momentum': sequence_data.get('momentum_scores', {}),
+            'correlation': sequence_data.get('correlation_matrix', None),
+            'volume_profile': sequence_data.get('volume_profile', {}),
+            'market_structure': sequence_data.get('market_structure', {})
+        }
+        
+    def _generate_phase_recommendations(self, current_phase: str, sequence_data: Dict) -> List[str]:
+        """Generate actionable recommendations based on the current phase."""
+        recommendations = []
+        
+        if current_phase == 'phase1':
+            recommendations.extend([
+                "Focus on established large-cap altcoins",
+                "Monitor BTC dominance for potential decline",
+                "Prepare for rotation into mid-caps"
+            ])
+        elif current_phase == 'phase2':
+            recommendations.extend([
+                "Begin rotating into selected mid-cap altcoins",
+                "Monitor large-cap profit taking signals",
+                "Watch for small-cap accumulation"
+            ])
+        else:
+            recommendations.extend([
+                "Consider higher-risk small-cap opportunities",
+                "Monitor for market cycle completion",
+                "Prepare for potential return to large-caps"
+            ])
+            
+        return recommendations

@@ -3,21 +3,34 @@ import pandas as pd
 import logging
 import pytz
 from datetime import datetime
+import sys
+import traceback
 
-from components.sidebar import render_sidebar, get_exchange_config
-from components.altcoin_analysis import render_altcoin_analysis
-from components.predictions import render_prediction_section
-from components.backtesting import render_backtesting_section
-from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region
-from utils.ui_components import show_error, show_warning, show_data_source_info
-from styles.theme import apply_custom_theme
-
-# Configure logging
+# Configure logging with more detailed format
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# Log import attempts
+try:
+    logger.info("Importing components...")
+    from components.sidebar import render_sidebar, get_exchange_config
+    from components.altcoin_analysis import render_altcoin_analysis
+    from components.predictions import render_prediction_section
+    from components.backtesting import render_backtesting_section
+    from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region
+    from utils.ui_components import show_error, show_warning, show_data_source_info
+    from styles.theme import apply_custom_theme
+    logger.info("All components imported successfully")
+except Exception as e:
+    logger.error(f"Error importing components: {str(e)}")
+    logger.error(traceback.format_exc())
+    raise
 
 # Set page configuration first, before any Streamlit commands
 st.set_page_config(
@@ -48,7 +61,8 @@ def initialize_session_state():
             'selected_timezone': 'UTC',
             'data_source': None,
             'sidebar_config': None,
-            'last_update': datetime.now()
+            'last_update': datetime.now(),
+            'current_tab': None  # Add this line to track current tab
         }
         
         for key, default_value in required_states.items():
@@ -62,6 +76,7 @@ def initialize_session_state():
         
     except Exception as e:
         logger.error(f"Error initializing session state: {str(e)}")
+        logger.error(traceback.format_exc())
         if not st.session_state.get('error_shown'):
             show_error(
                 "Initialization Error",
@@ -74,8 +89,10 @@ def initialize_session_state():
 def main():
     """Main application entry point with enhanced error handling and layout optimization."""
     try:
+        logger.info("Starting main application...")
         # Initialize session state first
         if not initialize_session_state():
+            logger.error("Failed to initialize session state")
             st.stop()
 
         # Create main layout with proper spacing
@@ -100,6 +117,7 @@ def main():
             </div>
         """, unsafe_allow_html=True)
         
+        logger.info("Rendering sidebar...")
         # Render sidebar with error boundary
         with st.sidebar:
             sidebar_config = render_sidebar()
@@ -114,8 +132,10 @@ def main():
                 "Unable to load sidebar configuration",
                 "Please refresh the page"
             )
+            logger.error("Failed to load sidebar configuration")
             st.stop()
         
+        logger.info("Creating main content tabs...")
         # Create main content tabs with proper spacing
         tabs = st.tabs([
             "📈 Price Analysis",
@@ -128,6 +148,7 @@ def main():
             if sidebar_config.get('selected_coins'):
                 with st.spinner("Loading price analysis..."):
                     coin = sidebar_config['selected_coins'][0]
+                    logger.info(f"Fetching data for {coin}...")
                     data = get_crypto_data(coin, sidebar_config['timeframe'])
                     
                     if not data.empty:
@@ -158,6 +179,7 @@ def main():
         
     except Exception as e:
         logger.error(f"Application error: {str(e)}")
+        logger.error(traceback.format_exc())
         show_error(
             "Application Error",
             str(e),
