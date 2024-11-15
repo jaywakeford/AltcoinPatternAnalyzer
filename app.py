@@ -1,8 +1,12 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import ccxt
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime, timedelta
 import logging
 import pytz
-from datetime import datetime
 import sys
 import traceback
 
@@ -25,6 +29,7 @@ try:
     from components.backtesting import render_backtesting_section
     from utils.data_fetcher import get_crypto_data, get_exchange_status, detect_region
     from utils.ui_components import show_error, show_warning, show_data_source_info
+    from utils.technical_analysis import calculate_advanced_metrics
     from styles.theme import apply_custom_theme
     logger.info("All components imported successfully")
 except Exception as e:
@@ -62,7 +67,10 @@ def initialize_session_state():
             'data_source': None,
             'sidebar_config': None,
             'last_update': datetime.now(),
-            'current_tab': None  # Add this line to track current tab
+            'current_tab': None,
+            'refresh_interval': 15,  # Default refresh interval in seconds
+            'auto_refresh': True,    # Auto-refresh enabled by default
+            'advanced_metrics': {}   # Store advanced metrics calculations
         }
         
         for key, default_value in required_states.items():
@@ -86,6 +94,89 @@ def initialize_session_state():
             st.session_state.error_shown = True
         return False
 
+def render_advanced_metrics(data: pd.DataFrame):
+    """Render advanced metrics visualization."""
+    try:
+        metrics = calculate_advanced_metrics(data)
+        
+        # Create metrics layout
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Volatility Gauge
+            fig_vol = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=metrics['volatility'],
+                title={'text': "Volatility Index"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "rgba(255, 140, 0, 0.8)"},
+                    'steps': [
+                        {'range': [0, 30], 'color': 'rgba(0, 255, 0, 0.3)'},
+                        {'range': [30, 70], 'color': 'rgba(255, 255, 0, 0.3)'},
+                        {'range': [70, 100], 'color': 'rgba(255, 0, 0, 0.3)'}
+                    ]
+                }
+            ))
+            st.plotly_chart(fig_vol, use_container_width=True)
+        
+        with col2:
+            # Momentum Score
+            fig_mom = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=metrics['momentum'],
+                title={'text': "Momentum Score"},
+                gauge={
+                    'axis': {'range': [-100, 100]},
+                    'bar': {'color': "rgba(0, 128, 255, 0.8)"},
+                    'steps': [
+                        {'range': [-100, -30], 'color': 'rgba(255, 0, 0, 0.3)'},
+                        {'range': [-30, 30], 'color': 'rgba(128, 128, 128, 0.3)'},
+                        {'range': [30, 100], 'color': 'rgba(0, 255, 0, 0.3)'}
+                    ]
+                }
+            ))
+            st.plotly_chart(fig_mom, use_container_width=True)
+        
+        with col3:
+            # Market Strength
+            fig_strength = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=metrics['market_strength'],
+                title={'text': "Market Strength"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "rgba(0, 255, 128, 0.8)"},
+                    'steps': [
+                        {'range': [0, 40], 'color': 'rgba(255, 0, 0, 0.3)'},
+                        {'range': [40, 60], 'color': 'rgba(255, 255, 0, 0.3)'},
+                        {'range': [60, 100], 'color': 'rgba(0, 255, 0, 0.3)'}
+                    ]
+                }
+            ))
+            st.plotly_chart(fig_strength, use_container_width=True)
+        
+        # Volume Profile
+        st.subheader("Volume Profile")
+        fig_vol_profile = go.Figure()
+        fig_vol_profile.add_trace(go.Bar(
+            x=data.index,
+            y=data['volume'],
+            name="Volume",
+            marker_color='rgba(0, 128, 255, 0.5)'
+        ))
+        fig_vol_profile.update_layout(
+            title="Trading Volume Distribution",
+            xaxis_title="Time",
+            yaxis_title="Volume",
+            height=300
+        )
+        st.plotly_chart(fig_vol_profile, use_container_width=True)
+        
+    except Exception as e:
+        logger.error(f"Error rendering advanced metrics: {str(e)}")
+        st.error("Unable to display advanced metrics. Please try again later.")
+
 def main():
     """Main application entry point with enhanced error handling and layout optimization."""
     try:
@@ -94,6 +185,27 @@ def main():
         if not initialize_session_state():
             logger.error("Failed to initialize session state")
             st.stop()
+
+        # Refresh interval control in sidebar
+        st.sidebar.subheader("Real-time Settings")
+        st.session_state.refresh_interval = st.sidebar.slider(
+            "Refresh Interval (seconds)",
+            min_value=5,
+            max_value=60,
+            value=st.session_state.refresh_interval,
+            step=5
+        )
+        st.session_state.auto_refresh = st.sidebar.checkbox(
+            "Auto Refresh",
+            value=st.session_state.auto_refresh
+        )
+
+        # Auto-refresh logic
+        if st.session_state.auto_refresh:
+            time_since_update = (datetime.now() - st.session_state.last_update).total_seconds()
+            if time_since_update >= st.session_state.refresh_interval:
+                st.session_state.last_update = datetime.now()
+                st.experimental_rerun()
 
         # Create main layout with proper spacing
         st.markdown("""
@@ -154,6 +266,8 @@ def main():
                     if not data.empty:
                         with st.container():
                             st.markdown('<div class="content-section">', unsafe_allow_html=True)
+                            # Add advanced metrics visualization
+                            render_advanced_metrics(data)
                             render_prediction_section(data)
                             st.markdown('</div>', unsafe_allow_html=True)
                     else:

@@ -26,3 +26,28 @@ def calculate_macd(data: pd.DataFrame) -> tuple:
     macd = exp1 - exp2
     signal = macd.ewm(span=9, adjust=False).mean()
     return macd, signal
+
+def calculate_advanced_metrics(data: pd.DataFrame) -> dict:
+    """Calculate advanced market metrics."""
+    try:
+        metrics = {}
+        
+        # Calculate volatility (20-period)
+        returns = data['close'].pct_change()
+        metrics['volatility'] = min(returns.std() * np.sqrt(252) * 100, 100)  # Annualized volatility capped at 100
+        
+        # Calculate momentum (Rate of change)
+        metrics['momentum'] = min(((data['close'].iloc[-1] / data['close'].iloc[-20]) - 1) * 100, 100)
+        
+        # Calculate market strength (combination of volume and price trend)
+        volume_trend = data['volume'].rolling(window=20).mean().iloc[-1] / data['volume'].rolling(window=20).mean().iloc[-2]
+        price_trend = data['close'].rolling(window=20).mean().iloc[-1] / data['close'].rolling(window=20).mean().iloc[-2]
+        metrics['market_strength'] = min((volume_trend * price_trend - 1) * 100, 100)
+        
+        return metrics
+    except Exception as e:
+        return {
+            'volatility': 0,
+            'momentum': 0,
+            'market_strength': 0
+        }
