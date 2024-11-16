@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 nest_asyncio.apply()
 
 # Import local modules after Streamlit configuration
-from utils.data_fetcher import ExchangeManager
+from utils.data_fetcher import ExchangeManager, ConnectionState
 from styles.theme import apply_custom_theme
 from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
@@ -152,7 +152,8 @@ async def setup_websocket_connection(exchange_manager: ExchangeManager, symbol: 
         needs_reconnect = (
             symbol not in st.session_state.ws_connections or
             (last_update and (current_time - last_update).total_seconds() > 30) or
-            not ws_status.get('connection_healthy', False)
+            not ws_status.get('connection_healthy', False) or
+            exchange_manager.get_websocket_status(symbol) != ConnectionState.CONNECTED
         )
 
         if needs_reconnect:
@@ -216,6 +217,15 @@ async def setup_websocket_connection(exchange_manager: ExchangeManager, symbol: 
         }
         return False
 
+def run_async(coroutine):
+    """Helper function to run async code."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(coroutine)
+
 def main():
     """Main entry point."""
     try:
@@ -256,12 +266,8 @@ def main():
                     coin = sidebar_config['selected_coins'][0]
                     symbol = f"{coin}/USDT".upper()
                     
-                    # Create event loop for websocket operations
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    # Set up websocket connection
-                    connection_success = loop.run_until_complete(
+                    # Set up websocket connection using the async helper
+                    connection_success = run_async(
                         setup_websocket_connection(exchange_manager, symbol)
                     )
                     

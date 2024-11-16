@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 from functools import partial
 import asyncio
-from .websocket_manager import websocket_manager
+from .websocket_manager import websocket_manager, ConnectionState
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -100,6 +100,14 @@ class ExchangeManager:
         self.active_exchange = None
         self._initialize_exchange()
 
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit with proper cleanup."""
+        await self.cleanup()
+
     def _initialize_exchange(self):
         """Initialize exchange with fallback options."""
         exchange_errors = []
@@ -188,30 +196,18 @@ class ExchangeManager:
                 "Errors encountered:\n" + "\n".join(exchange_errors)
             )
             logger.error(error_message)
-            
-            # Show appropriate error message to users
-            if not (api_key and api_secret):
-                st.warning(
-                    "⚠️ Running in public API mode. Some features may be limited. "
-                    "For full functionality, please provide valid API credentials."
-                )
-            else:
-                st.error(
-                    "🚫 Unable to connect to exchanges. Please check your API credentials "
-                    "and ensure the exchange services are available in your region."
-                )
-            
             raise ccxt.ExchangeNotAvailable(error_message)
 
     async def enable_websocket(self, symbol: str, callback: callable) -> None:
-        """Enable websocket connection for real-time data."""
+        """Enable websocket connection for real-time data with enhanced error handling."""
         try:
             # Ensure exchange is initialized
             if not self.active_exchange:
                 self._initialize_exchange()
             
-            # Try primary exchange first
-            exchange_id = self.active_exchange.id
+            exchange_id = self.active_exchange.id if self.active_exchange else None
+            if not exchange_id:
+                raise ValueError("No active exchange available")
             
             # Register callback
             self.websocket_callbacks[symbol] = callback
@@ -231,11 +227,12 @@ class ExchangeManager:
             raise
 
     async def disable_websocket(self, symbol: str) -> None:
-        """Disable websocket connection."""
+        """Disable websocket connection with proper cleanup."""
         try:
             if symbol in self.websocket_callbacks:
-                exchange_id = self.active_exchange.id
-                await websocket_manager.disconnect(symbol, exchange_id)
+                exchange_id = self.active_exchange.id if self.active_exchange else None
+                if exchange_id:
+                    await websocket_manager.disconnect(symbol, exchange_id)
                 del self.websocket_callbacks[symbol]
                 
             self.websocket_enabled = False
@@ -246,13 +243,17 @@ class ExchangeManager:
             raise
 
     async def _handle_websocket_message(self, message: dict) -> None:
-        """Process incoming websocket messages."""
+        """Process incoming websocket messages with enhanced error handling."""
         try:
             # Extract symbol from message (format depends on exchange)
             symbol = self._extract_symbol_from_message(message)
             
             if symbol and symbol in self.websocket_callbacks:
-                await self.websocket_callbacks[symbol](message)
+                callback = self.websocket_callbacks[symbol]
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(message)
+                else:
+                    callback(message)
                 
         except Exception as e:
             logger.error(f"Error handling websocket message: {str(e)}")
@@ -260,24 +261,37 @@ class ExchangeManager:
     def _extract_symbol_from_message(self, message: dict) -> Optional[str]:
         """Extract symbol from websocket message based on exchange format."""
         try:
-            if 'pair' in message:  # Kraken format
-                return message['pair'][0]
-            elif 'symbol' in message:  # KuCoin format
-                return message['symbol']
-            elif 'data' in message and 'symbol' in message['data']:
-                return message['data']['symbol']
+            if isinstance(message, dict):
+                if 'pair' in message:  # Kraken format
+                    return message['pair'][0] if isinstance(message['pair'], list) else message['pair']
+                elif 'symbol' in message:  # KuCoin format
+                    return message['symbol']
+                elif 'data' in message and isinstance(message['data'], dict):
+                    if 'symbol' in message['data']:
+                        return message['data']['symbol']
             return None
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error extracting symbol from message: {str(e)}")
             return None
 
     async def cleanup(self) -> None:
-        """Cleanup resources including websocket connections."""
+        """Cleanup resources including websocket connections with enhanced error handling."""
         try:
-            await websocket_manager.disconnect_all()
-            self.websocket_enabled = False
-            self.websocket_callbacks.clear()
+            if self.websocket_enabled:
+                await websocket_manager.disconnect_all()
+                self.websocket_enabled = False
+                self.websocket_callbacks.clear()
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
+
+    def get_websocket_status(self, symbol: str) -> ConnectionState:
+        """Get the current websocket connection state for a symbol."""
+        if self.active_exchange:
+            return websocket_manager.get_connection_state(
+                symbol=symbol,
+                exchange=self.active_exchange.id
+            )
+        return ConnectionState.DISCONNECTED
 
     def _get_region_optimized_exchanges(self) -> List[str]:
         """Get region-optimized list of exchanges."""
