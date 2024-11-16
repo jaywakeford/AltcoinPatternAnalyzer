@@ -100,6 +100,11 @@ class ExchangeManager:
         self.active_exchange = None
         self._initialize_exchange()
 
+    @property
+    def current_exchange(self) -> Optional[str]:
+        """Get the current active exchange ID."""
+        return self.active_exchange.id if self.active_exchange else None
+
     async def __aenter__(self):
         """Async context manager entry."""
         return self
@@ -205,7 +210,8 @@ class ExchangeManager:
             if not self.active_exchange:
                 self._initialize_exchange()
             
-            exchange_id = self.active_exchange.id if self.active_exchange else None
+            # Get current exchange ID
+            exchange_id = self.current_exchange
             if not exchange_id:
                 raise ValueError("No active exchange available")
             
