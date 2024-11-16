@@ -7,6 +7,7 @@ from datetime import datetime
 import time
 from enum import Enum
 import websockets
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -32,199 +33,54 @@ class WebSocketManager:
         self.connection_pools: Dict[str, asyncio.Queue] = {}
         self.pool_size = 2  # Number of backup connections per symbol
         self._cleanup_lock = asyncio.Lock()
+        self.valid_base_currencies = {
+            'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 
+            'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'LTC'
+        }
+        self.valid_quote_currencies = {'USDT', 'USD', 'EUR', 'BTC'}
+        self._loop = None
+
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop:
+        """Get or create event loop."""
+        if self._loop is None or self._loop.is_closed():
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
+        return self._loop
 
     def _validate_symbol(self, symbol: str) -> bool:
-        """Validate symbol format."""
-        if not symbol or not isinstance(symbol, str):
-            return False
-            
-        parts = symbol.split('/')
-        if len(parts) != 2:
-            return False
-            
-        base, quote = parts
-        if not base or not quote:
-            return False
-            
-        valid_quotes = ['USDT', 'USD', 'EUR', 'BTC']
-        return quote in valid_quotes
-
-    async def connect(self, symbol: str, exchange: str, callback: Callable[[Dict[str, Any]], None]) -> None:
-        """Connect to exchange websocket with enhanced connection lifecycle management."""
-        if not self._validate_symbol(symbol):
-            raise ValueError(f"Invalid symbol format: {symbol}")
-            
-        connection_id = f"{exchange}_{symbol}"
-        
+        """Validate symbol format with enhanced checks."""
         try:
-            if connection_id in self.connections:
-                # Close existing connection if any
-                await self.disconnect(symbol, exchange)
-
-            self.connection_states[connection_id] = ConnectionState.CONNECTING
+            if not symbol or not isinstance(symbol, str):
+                logger.warning(f"Invalid symbol: {symbol} - Must be a non-empty string")
+                return False
+                
+            # Check format using regex
+            if not re.match(r'^[A-Z0-9]+/[A-Z0-9]+$', symbol):
+                logger.warning(f"Invalid symbol format: {symbol} - Must be in BASE/QUOTE format")
+                return False
+                
+            base, quote = symbol.split('/')
             
-            # Get appropriate websocket URL and subscription message
-            ws_url, subscription = await self._get_exchange_config(exchange, symbol)
-            self.callbacks[connection_id] = callback
-
-            # Establish main connection
-            websocket = await websockets.connect(ws_url, ping_interval=20)
-            self.connections[connection_id] = websocket
+            # Validate base currency
+            if base not in self.valid_base_currencies:
+                logger.warning(f"Invalid base currency: {base} - Must be one of {self.valid_base_currencies}")
+                return False
+                
+            # Validate quote currency
+            if quote not in self.valid_quote_currencies:
+                logger.warning(f"Invalid quote currency: {quote} - Must be one of {self.valid_quote_currencies}")
+                return False
+                
+            logger.info(f"Symbol validated successfully: {symbol}")
+            return True
             
-            # Send subscription message
-            await websocket.send(json.dumps(subscription))
-            logger.info(f"Connected to {exchange} websocket for {symbol}")
-            
-            # Create and store management task
-            management_task = asyncio.create_task(self._manage_connection(connection_id, websocket))
-            self.connection_tasks[connection_id] = management_task
-            
-            # Create connection pool in background
-            pool_task = asyncio.create_task(self.create_connection_pool(connection_id, ws_url))
-            self.connection_tasks[f"{connection_id}_pool"] = pool_task
-            
-            # Update state
-            self.connection_states[connection_id] = ConnectionState.CONNECTED
-
         except Exception as e:
-            logger.error(f"Error in connect: {str(e)}")
-            self.connection_states[connection_id] = ConnectionState.ERROR
-            raise
-
-    async def _manage_connection(self, connection_id: str, websocket: Any) -> None:
-        """Manage connection lifecycle including message handling and heartbeat monitoring."""
-        try:
-            message_task = asyncio.create_task(self._handle_messages(connection_id, websocket))
-            heartbeat_task = asyncio.create_task(self._heartbeat(connection_id))
-            
-            tasks = [message_task, heartbeat_task]
-            done, pending = await asyncio.wait(
-                tasks,
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # Cancel pending tasks
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-
-            # Check for errors in completed tasks
-            for task in done:
-                try:
-                    await task
-                except Exception as e:
-                    logger.error(f"Task error in connection management: {str(e)}")
-                    await self._handle_connection_error(connection_id)
-                    break
-
-        except Exception as e:
-            logger.error(f"Error in connection management: {str(e)}")
-            await self._handle_connection_error(connection_id)
-
-    async def _handle_messages(self, connection_id: str, websocket: Any) -> None:
-        """Handle incoming websocket messages with comprehensive error handling."""
-        while True:
-            try:
-                message = await websocket.recv()
-                self.last_heartbeat[connection_id] = time.time()
-                
-                try:
-                    data = json.loads(message)
-                    callback = self.callbacks.get(connection_id)
-                    if callback:
-                        if asyncio.iscoroutinefunction(callback):
-                            await callback(data)
-                        else:
-                            callback(data)
-                            
-                except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON received from {connection_id}")
-                except Exception as e:
-                    logger.error(f"Error processing message: {str(e)}")
-                    
-            except websockets.exceptions.ConnectionClosed:
-                logger.warning(f"Connection closed for {connection_id}")
-                raise
-            except Exception as e:
-                logger.error(f"Error in message handling: {str(e)}")
-                raise
-
-    async def _heartbeat(self, connection_id: str) -> None:
-        """Monitor connection health with enhanced error detection."""
-        while connection_id in self.connections:
-            try:
-                await asyncio.sleep(self.heartbeat_interval)
-                
-                if connection_id not in self.last_heartbeat:
-                    self.last_heartbeat[connection_id] = time.time()
-                    continue
-                    
-                last_heartbeat = self.last_heartbeat[connection_id]
-                current_time = time.time()
-                
-                if current_time - last_heartbeat > self.heartbeat_interval * 2:
-                    logger.warning(f"Connection {connection_id} appears stale")
-                    raise ConnectionError(f"Connection {connection_id} stale")
-                    
-            except Exception as e:
-                logger.error(f"Heartbeat error: {str(e)}")
-                raise
-
-    async def create_connection_pool(self, connection_id: str, ws_url: str) -> None:
-        """Create a pool of backup connections."""
-        if connection_id not in self.connection_pools:
-            self.connection_pools[connection_id] = asyncio.Queue(maxsize=self.pool_size)
-            
-        while self.connection_pools[connection_id].qsize() < self.pool_size:
-            try:
-                websocket = await websockets.connect(ws_url, ping_interval=20)
-                await self.connection_pools[connection_id].put(websocket)
-                logger.info(f"Added backup connection to pool for {connection_id}")
-            except Exception as e:
-                logger.warning(f"Failed to create backup connection: {str(e)}")
-                break  # Stop trying if we can't create backup connections
-
-    async def _handle_connection_error(self, connection_id: str) -> None:
-        """Handle connection errors with enhanced recovery mechanisms."""
-        if connection_id in self.connections:
-            self.connection_states[connection_id] = ConnectionState.RECONNECTING
-            
-            # Close existing connection
-            try:
-                await self.connections[connection_id].close()
-            except:
-                pass
-            
-            del self.connections[connection_id]
-
-            # Try to get a backup connection
-            try:
-                if connection_id in self.connection_pools:
-                    backup = await self.connection_pools[connection_id].get_nowait()
-                    self.connections[connection_id] = backup
-                    self.connection_states[connection_id] = ConnectionState.CONNECTED
-                    logger.info(f"Switched to backup connection for {connection_id}")
-                    return
-            except (asyncio.QueueEmpty, KeyError):
-                pass
-
-            # If no backup available, try reconnecting
-            exchange, symbol = connection_id.split('_', 1)
-            for attempt, delay in enumerate(self.retry_delays):
-                try:
-                    await self.connect(symbol, exchange, self.callbacks[connection_id])
-                    logger.info(f"Successfully reconnected to {connection_id}")
-                    return
-                except Exception as e:
-                    logger.error(f"Reconnection attempt {attempt + 1} failed: {str(e)}")
-                    if attempt < len(self.retry_delays) - 1:
-                        await asyncio.sleep(delay)
-                    else:
-                        self.connection_states[connection_id] = ConnectionState.ERROR
-                        logger.error(f"All reconnection attempts failed")
+            logger.error(f"Error validating symbol {symbol}: {str(e)}")
+            return False
 
     async def _get_exchange_config(self, exchange: str, symbol: str) -> Tuple[str, dict]:
         """Get exchange-specific websocket configuration."""
@@ -266,6 +122,205 @@ class WebSocketManager:
             )
         else:
             raise ValueError(f"Unsupported exchange: {exchange}")
+
+    async def connect(self, symbol: str, exchange: str, callback: Callable[[Dict[str, Any]], None]) -> None:
+        """Connect to exchange websocket with enhanced connection lifecycle management."""
+        if not self._validate_symbol(symbol):
+            logger.error(f"Invalid symbol format: {symbol}")
+            raise ValueError(f"Invalid symbol format: {symbol}. Symbol must be in BASE/QUOTE format (e.g., BTC/USDT)")
+            
+        connection_id = f"{exchange}_{symbol}"
+        
+        try:
+            if connection_id in self.connections:
+                # Close existing connection if any
+                await self.disconnect(symbol, exchange)
+
+            self.connection_states[connection_id] = ConnectionState.CONNECTING
+            
+            # Get appropriate websocket URL and subscription message
+            ws_url, subscription = await self._get_exchange_config(exchange, symbol)
+            self.callbacks[connection_id] = callback
+
+            # Establish main connection
+            websocket = await websockets.connect(ws_url, ping_interval=20)
+            self.connections[connection_id] = websocket
+            
+            # Send subscription message
+            await websocket.send(json.dumps(subscription))
+            logger.info(f"Connected to {exchange} websocket for {symbol}")
+            
+            # Create and store management task using the same loop
+            management_task = self.loop.create_task(
+                self._manage_connection(connection_id, websocket)
+            )
+            self.connection_tasks[connection_id] = management_task
+            
+            # Create connection pool in background using the same loop
+            pool_task = self.loop.create_task(
+                self.create_connection_pool(connection_id, ws_url)
+            )
+            self.connection_tasks[f"{connection_id}_pool"] = pool_task
+            
+            # Update state
+            self.connection_states[connection_id] = ConnectionState.CONNECTED
+
+        except Exception as e:
+            logger.error(f"Error in connect: {str(e)}")
+            self.connection_states[connection_id] = ConnectionState.ERROR
+            raise
+
+    async def _manage_connection(self, connection_id: str, websocket: Any) -> None:
+        """Manage connection lifecycle including message handling and heartbeat monitoring."""
+        message_task = None
+        heartbeat_task = None
+        
+        try:
+            # Create tasks using the same loop
+            message_task = self.loop.create_task(self._handle_messages(connection_id, websocket))
+            heartbeat_task = self.loop.create_task(self._heartbeat(connection_id))
+            
+            # Wait for either task to complete or fail
+            done, pending = await asyncio.wait(
+                [message_task, heartbeat_task],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
+            # Process completed tasks
+            for task in done:
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    logger.info(f"Task cancelled for {connection_id}")
+                except Exception as e:
+                    logger.error(f"Task error in connection management: {str(e)}")
+                    raise
+
+        except Exception as e:
+            logger.error(f"Error in connection management: {str(e)}")
+            raise
+
+        finally:
+            # Cleanup tasks
+            for task in [message_task, heartbeat_task]:
+                if task and not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error cleaning up task: {str(e)}")
+
+            await self._handle_connection_error(connection_id)
+
+    async def _handle_messages(self, connection_id: str, websocket: Any) -> None:
+        """Handle incoming websocket messages with comprehensive error handling."""
+        try:
+            while True:
+                message = await websocket.recv()
+                self.last_heartbeat[connection_id] = time.time()
+                
+                try:
+                    data = json.loads(message)
+                    callback = self.callbacks.get(connection_id)
+                    if callback:
+                        if asyncio.iscoroutinefunction(callback):
+                            await callback(data)
+                        else:
+                            callback(data)
+                            
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON received from {connection_id}")
+                except Exception as e:
+                    logger.error(f"Error processing message: {str(e)}")
+                    
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning(f"Connection closed for {connection_id}")
+            raise
+        except asyncio.CancelledError:
+            logger.info(f"Message handling cancelled for {connection_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error in message handling: {str(e)}")
+            raise
+
+    async def _heartbeat(self, connection_id: str) -> None:
+        """Monitor connection health with enhanced error detection."""
+        try:
+            while connection_id in self.connections:
+                await asyncio.sleep(self.heartbeat_interval)
+                
+                if connection_id not in self.last_heartbeat:
+                    self.last_heartbeat[connection_id] = time.time()
+                    continue
+                    
+                last_heartbeat = self.last_heartbeat[connection_id]
+                current_time = time.time()
+                
+                if current_time - last_heartbeat > self.heartbeat_interval * 2:
+                    logger.warning(f"Connection {connection_id} appears stale")
+                    raise ConnectionError(f"Connection {connection_id} stale")
+                    
+        except asyncio.CancelledError:
+            logger.info(f"Heartbeat monitoring cancelled for {connection_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Heartbeat error: {str(e)}")
+            raise
+
+    async def create_connection_pool(self, connection_id: str, ws_url: str) -> None:
+        """Create a pool of backup connections."""
+        if connection_id not in self.connection_pools:
+            self.connection_pools[connection_id] = asyncio.Queue(maxsize=self.pool_size)
+            
+        while self.connection_pools[connection_id].qsize() < self.pool_size:
+            try:
+                websocket = await websockets.connect(ws_url, ping_interval=20)
+                await self.connection_pools[connection_id].put(websocket)
+                logger.info(f"Added backup connection to pool for {connection_id}")
+            except Exception as e:
+                logger.warning(f"Failed to create backup connection: {str(e)}")
+                break
+
+    async def _handle_connection_error(self, connection_id: str) -> None:
+        """Handle connection errors with enhanced recovery mechanisms."""
+        if connection_id in self.connections:
+            self.connection_states[connection_id] = ConnectionState.RECONNECTING
+            
+            # Close existing connection
+            try:
+                await self.connections[connection_id].close()
+            except:
+                pass
+            
+            del self.connections[connection_id]
+
+            # Try to get a backup connection
+            try:
+                if connection_id in self.connection_pools:
+                    backup = await self.connection_pools[connection_id].get_nowait()
+                    self.connections[connection_id] = backup
+                    self.connection_states[connection_id] = ConnectionState.CONNECTED
+                    logger.info(f"Switched to backup connection for {connection_id}")
+                    return
+            except (asyncio.QueueEmpty, KeyError):
+                pass
+
+            # If no backup available, try reconnecting
+            exchange, symbol = connection_id.split('_', 1)
+            for attempt, delay in enumerate(self.retry_delays):
+                try:
+                    await self.connect(symbol, exchange, self.callbacks[connection_id])
+                    logger.info(f"Successfully reconnected to {connection_id}")
+                    return
+                except Exception as e:
+                    logger.error(f"Reconnection attempt {attempt + 1} failed: {str(e)}")
+                    if attempt < len(self.retry_delays) - 1:
+                        await asyncio.sleep(delay)
+                    else:
+                        self.connection_states[connection_id] = ConnectionState.ERROR
+                        logger.error(f"All reconnection attempts failed")
 
     async def disconnect(self, symbol: str, exchange: str) -> None:
         """Disconnect from a specific websocket connection with proper cleanup."""
