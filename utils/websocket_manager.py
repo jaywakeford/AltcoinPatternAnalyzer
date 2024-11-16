@@ -31,18 +31,29 @@ class WebSocketManager:
         self.max_reconnect_attempts = 5
         self.connection_pools: Dict[str, asyncio.Queue] = {}
         self.pool_size = 2  # Number of backup connections per symbol
+        self._cleanup_lock = asyncio.Lock()
 
-    def _safe_task_callback(self, task: asyncio.Task) -> None:
-        """Safe callback for completed tasks."""
-        try:
-            task.result()
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.error(f"Task error: {str(e)}")
+    def _validate_symbol(self, symbol: str) -> bool:
+        """Validate symbol format."""
+        if not symbol or not isinstance(symbol, str):
+            return False
+            
+        parts = symbol.split('/')
+        if len(parts) != 2:
+            return False
+            
+        base, quote = parts
+        if not base or not quote:
+            return False
+            
+        valid_quotes = ['USDT', 'USD', 'EUR', 'BTC']
+        return quote in valid_quotes
 
     async def connect(self, symbol: str, exchange: str, callback: Callable[[Dict[str, Any]], None]) -> None:
         """Connect to exchange websocket with enhanced connection lifecycle management."""
+        if not self._validate_symbol(symbol):
+            raise ValueError(f"Invalid symbol format: {symbol}")
+            
         connection_id = f"{exchange}_{symbol}"
         
         try:
@@ -64,15 +75,16 @@ class WebSocketManager:
             await websocket.send(json.dumps(subscription))
             logger.info(f"Connected to {exchange} websocket for {symbol}")
             
+            # Create and store management task
+            management_task = asyncio.create_task(self._manage_connection(connection_id, websocket))
+            self.connection_tasks[connection_id] = management_task
+            
             # Create connection pool in background
             pool_task = asyncio.create_task(self.create_connection_pool(connection_id, ws_url))
-            pool_task.add_done_callback(self._safe_task_callback)
+            self.connection_tasks[f"{connection_id}_pool"] = pool_task
             
-            # Update state and start management tasks
+            # Update state
             self.connection_states[connection_id] = ConnectionState.CONNECTED
-            management_task = asyncio.create_task(self._manage_connection(connection_id, websocket))
-            management_task.add_done_callback(self._safe_task_callback)
-            self.connection_tasks[connection_id] = management_task
 
         except Exception as e:
             logger.error(f"Error in connect: {str(e)}")
@@ -259,53 +271,63 @@ class WebSocketManager:
         """Disconnect from a specific websocket connection with proper cleanup."""
         connection_id = f"{exchange}_{symbol}"
         
-        if connection_id in self.connections:
-            self.connection_states[connection_id] = ConnectionState.DISCONNECTED
-            
-            # Cancel management tasks
-            if connection_id in self.connection_tasks:
-                self.connection_tasks[connection_id].cancel()
-                try:
-                    await self.connection_tasks[connection_id]
-                except asyncio.CancelledError:
-                    pass
-                del self.connection_tasks[connection_id]
-            
-            # Close main connection
-            try:
-                await self.connections[connection_id].close()
-            except:
-                pass
+        async with self._cleanup_lock:
+            if connection_id in self.connections:
+                self.connection_states[connection_id] = ConnectionState.DISCONNECTED
                 
-            # Clean up connection pool
-            if connection_id in self.connection_pools:
-                while not self.connection_pools[connection_id].empty():
-                    try:
-                        ws = await self.connection_pools[connection_id].get_nowait()
-                        await ws.close()
-                    except:
-                        pass
-                del self.connection_pools[connection_id]
-            
-            # Clean up resources
-            del self.connections[connection_id]
-            self.callbacks.pop(connection_id, None)
-            self.last_heartbeat.pop(connection_id, None)
-            
-            logger.info(f"Disconnected from {connection_id}")
+                # Cancel and clean up tasks
+                tasks_to_cancel = []
+                if connection_id in self.connection_tasks:
+                    tasks_to_cancel.append(self.connection_tasks[connection_id])
+                if f"{connection_id}_pool" in self.connection_tasks:
+                    tasks_to_cancel.append(self.connection_tasks[f"{connection_id}_pool"])
+                
+                for task in tasks_to_cancel:
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                
+                # Close main connection
+                try:
+                    await self.connections[connection_id].close()
+                except:
+                    pass
+                    
+                # Clean up connection pool
+                if connection_id in self.connection_pools:
+                    while not self.connection_pools[connection_id].empty():
+                        try:
+                            ws = await self.connection_pools[connection_id].get_nowait()
+                            await ws.close()
+                        except:
+                            pass
+                    del self.connection_pools[connection_id]
+                
+                # Clean up resources
+                self.connections.pop(connection_id, None)
+                self.callbacks.pop(connection_id, None)
+                self.last_heartbeat.pop(connection_id, None)
+                self.connection_tasks.pop(connection_id, None)
+                self.connection_tasks.pop(f"{connection_id}_pool", None)
+                
+                logger.info(f"Disconnected from {connection_id}")
 
     async def disconnect_all(self) -> None:
         """Disconnect from all websocket connections with proper cleanup."""
-        for connection_id in list(self.connections.keys()):
-            exchange, symbol = connection_id.split('_', 1)
-            await self.disconnect(symbol, exchange)
-        
-        self.connections.clear()
-        self.callbacks.clear()
-        self.connection_states.clear()
-        self.connection_tasks.clear()
-        self.connection_pools.clear()
-        logger.info("Disconnected from all websockets")
+        async with self._cleanup_lock:
+            for connection_id in list(self.connections.keys()):
+                exchange, symbol = connection_id.split('_', 1)
+                await self.disconnect(symbol, exchange)
+            
+            self.connections.clear()
+            self.callbacks.clear()
+            self.connection_states.clear()
+            self.connection_tasks.clear()
+            self.connection_pools.clear()
+            logger.info("Disconnected from all websockets")
 
     def get_connection_state(self, symbol: str, exchange: str) -> ConnectionState:
         """Get the current state of a connection."""

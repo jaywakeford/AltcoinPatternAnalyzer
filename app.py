@@ -35,35 +35,98 @@ from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
 from components.backtesting import render_backtesting_section
 
-def initialize_session_state():
-    """Initialize session state variables."""
-    if 'initialized' not in st.session_state:
-        st.session_state.initialized = False
-        
-    required_states = {
-        'exchange_status': {},
-        'error_shown': False,
-        'selected_region': None,
-        'selected_timezone': 'UTC',
-        'data_source': None,
-        'sidebar_config': None,
-        'last_update': datetime.now(),
-        'current_tab': None,
-        'refresh_interval': 15,
-        'auto_refresh': True,
-        'advanced_metrics': {},
-        'ws_connections': {},
-        'real_time_data': {},
-        'websocket_status': {},
-        'last_price': {},
-        'price_changes': {},
-        'connection_retries': {},
-        'initialized': True
-    }
+def run_async(coroutine):
+    """Helper function to run async code with proper task cleanup."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     
-    for key, default_value in required_states.items():
-        if key not in st.session_state:
-            st.session_state[key] = default_value
+    try:
+        # Create and run task with proper cleanup
+        task = loop.create_task(coroutine)
+        return loop.run_until_complete(task)
+    finally:
+        # Clean up pending tasks
+        pending = asyncio.all_tasks(loop)
+        for task in pending:
+            task.cancel()
+        
+        # Run loop again to handle cancellations
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
+async def setup_websocket_connection(exchange_manager: ExchangeManager, symbol: str) -> bool:
+    """Set up websocket connection with enhanced error handling and retry logic."""
+    try:
+        # Check if we need to reconnect
+        ws_status = st.session_state.websocket_status.get(symbol, {})
+        last_update = ws_status.get('last_update')
+        current_time = datetime.now()
+        
+        needs_reconnect = (
+            symbol not in st.session_state.ws_connections or
+            (last_update and (current_time - last_update).total_seconds() > 30) or
+            not ws_status.get('connection_healthy', False) or
+            exchange_manager.get_websocket_status(symbol) != ConnectionState.CONNECTED
+        )
+
+        if needs_reconnect:
+            # Update status to initializing
+            st.session_state.websocket_status[symbol] = {
+                'status': 'initializing',
+                'last_update': current_time,
+                'connection_healthy': False
+            }
+            
+            try:
+                # Enable websocket with the exchange
+                await exchange_manager.enable_websocket(
+                    symbol=symbol,
+                    callback=handle_websocket_message
+                )
+                
+                # Reset retry counter on successful connection
+                st.session_state.connection_retries[symbol] = 0
+                st.session_state.ws_connections[symbol] = True
+                st.session_state.websocket_status[symbol].update({
+                    'status': 'connected',
+                    'last_update': current_time,
+                    'connection_healthy': True
+                })
+                
+                logger.info(f"Successfully established websocket connection for {symbol}")
+                return True
+                
+            except Exception as e:
+                # Handle connection failure
+                st.session_state.connection_retries[symbol] = st.session_state.connection_retries.get(symbol, 0) + 1
+                max_retries = 3
+                
+                if st.session_state.connection_retries[symbol] >= max_retries:
+                    logger.error(f"Failed to establish websocket connection for {symbol} after {max_retries} attempts")
+                    st.session_state.websocket_status[symbol].update({
+                        'status': 'error',
+                        'error': f"Connection failed after {max_retries} attempts: {str(e)}",
+                        'connection_healthy': False
+                    })
+                    return False
+                
+                # Wait before retry (exponential backoff)
+                await asyncio.sleep(2 ** st.session_state.connection_retries[symbol])
+                return await setup_websocket_connection(exchange_manager, symbol)
+        
+        return True  # Connection is already established and healthy
+            
+    except Exception as e:
+        logger.error(f"Error in websocket setup: {str(e)}")
+        st.session_state.websocket_status[symbol] = {
+            'status': 'error',
+            'error': str(e),
+            'last_update': datetime.now(),
+            'connection_healthy': False
+        }
+        return False
 
 async def handle_websocket_message(message: Dict[str, Any]) -> None:
     """Handle incoming websocket messages with improved error handling."""
@@ -123,111 +186,125 @@ async def handle_websocket_message(message: Dict[str, Any]) -> None:
                 st.session_state.real_time_data[symbol].pop(0)
 
             # Update websocket status
-            st.session_state.websocket_status[symbol] = {
-                'status': 'connected',
-                'last_update': timestamp,
-                'last_price': price,
-                'price_change': price_change,
-                'connection_healthy': True
-            }
+            if symbol in st.session_state.websocket_status:
+                st.session_state.websocket_status[symbol].update({
+                    'status': 'connected',
+                    'last_update': timestamp,
+                    'last_price': price,
+                    'price_change': price_change,
+                    'connection_healthy': True
+                })
 
     except Exception as e:
         logger.error(f"Error handling websocket message: {str(e)}")
-        if symbol:
-            st.session_state.websocket_status[symbol] = {
+        if symbol and symbol in st.session_state.websocket_status:
+            st.session_state.websocket_status[symbol].update({
                 'status': 'error',
                 'error': str(e),
                 'last_update': datetime.now(),
                 'connection_healthy': False
-            }
+            })
 
-async def setup_websocket_connection(exchange_manager: ExchangeManager, symbol: str) -> bool:
-    """Set up websocket connection with enhanced error handling and retry logic."""
+def initialize_session_state():
+    """Initialize session state variables with improved logging."""
     try:
-        # Check if we need to reconnect
-        ws_status = st.session_state.websocket_status.get(symbol, {})
-        last_update = ws_status.get('last_update')
-        current_time = datetime.now()
-        
-        needs_reconnect = (
-            symbol not in st.session_state.ws_connections or
-            (last_update and (current_time - last_update).total_seconds() > 30) or
-            not ws_status.get('connection_healthy', False) or
-            exchange_manager.get_websocket_status(symbol) != ConnectionState.CONNECTED
-        )
-
-        if needs_reconnect:
-            # Update status to initializing
-            st.session_state.websocket_status[symbol] = {
-                'status': 'initializing',
-                'last_update': current_time,
-                'connection_healthy': False
-            }
+        logger.info("Initializing session state...")
+        if 'initialized' not in st.session_state:
+            st.session_state.initialized = False
             
-            # Initialize retry counter if needed
-            if symbol not in st.session_state.connection_retries:
-                st.session_state.connection_retries[symbol] = 0
-            
-            try:
-                # Enable websocket with the exchange
-                await exchange_manager.enable_websocket(
-                    symbol=symbol,
-                    callback=handle_websocket_message
-                )
-                
-                # Reset retry counter on successful connection
-                st.session_state.connection_retries[symbol] = 0
-                st.session_state.ws_connections[symbol] = True
-                st.session_state.websocket_status[symbol].update({
-                    'status': 'connected',
-                    'last_update': current_time,
-                    'connection_healthy': True
-                })
-                
-                logger.info(f"Successfully established websocket connection for {symbol}")
-                return True
-                
-            except Exception as e:
-                # Handle connection failure
-                st.session_state.connection_retries[symbol] += 1
-                max_retries = 3
-                
-                if st.session_state.connection_retries[symbol] >= max_retries:
-                    logger.error(f"Failed to establish websocket connection for {symbol} after {max_retries} attempts")
-                    st.session_state.websocket_status[symbol].update({
-                        'status': 'error',
-                        'error': f"Connection failed after {max_retries} attempts: {str(e)}",
-                        'connection_healthy': False
-                    })
-                    return False
-                
-                # Wait before retry (exponential backoff)
-                await asyncio.sleep(2 ** st.session_state.connection_retries[symbol])
-                return await setup_websocket_connection(exchange_manager, symbol)
-        
-        return True  # Connection is already established and healthy
-            
-    except Exception as e:
-        logger.error(f"Error in websocket setup: {str(e)}")
-        st.session_state.websocket_status[symbol] = {
-            'status': 'error',
-            'error': str(e),
+        required_states = {
+            'exchange_status': {},
+            'error_shown': False,
+            'selected_region': None,
+            'selected_timezone': 'UTC',
+            'data_source': None,
+            'sidebar_config': None,
             'last_update': datetime.now(),
-            'connection_healthy': False
+            'current_tab': None,
+            'refresh_interval': 15,
+            'auto_refresh': True,
+            'advanced_metrics': {},
+            'ws_connections': {},
+            'real_time_data': {},
+            'websocket_status': {},
+            'last_price': {},
+            'price_changes': {},
+            'connection_retries': {},
+            'symbol_mapping': {
+                'bitcoin': 'BTC',
+                'ethereum': 'ETH',
+                'litecoin': 'LTC',
+                'ripple': 'XRP',
+                'cardano': 'ADA',
+                'polkadot': 'DOT',
+                'solana': 'SOL',
+                'binancecoin': 'BNB'
+            }
         }
+        
+        for key, default_value in required_states.items():
+            if key not in st.session_state:
+                st.session_state[key] = default_value
+                logger.info(f"Initialized {key} in session state")
+        
+        st.session_state.initialized = True
+        logger.info("Session state initialization completed")
+        
+    except Exception as e:
+        logger.error(f"Error initializing session state: {str(e)}")
+        raise
+
+def get_trading_symbol(coin: str) -> str:
+    """Convert coin name to proper trading symbol format with validation."""
+    try:
+        # Convert to lowercase for consistent comparison
+        coin_lower = coin.lower()
+        
+        # Symbol mapping for standardization
+        symbol = st.session_state.symbol_mapping.get(coin_lower)
+        if not symbol:
+            logger.warning(f"Symbol not found for {coin}, using uppercase version")
+            symbol = coin.upper()
+        
+        trading_pair = f"{symbol}/USDT"
+        logger.info(f"Converted {coin} to trading pair {trading_pair}")
+        return trading_pair
+        
+    except Exception as e:
+        logger.error(f"Error converting trading symbol: {str(e)}")
+        raise
+
+def validate_trading_symbol(symbol: str) -> bool:
+    """Validate trading symbol format with improved logging."""
+    try:
+        if not symbol or not isinstance(symbol, str):
+            logger.warning("Invalid symbol: empty or not string")
+            return False
+            
+        parts = symbol.split('/')
+        if len(parts) != 2:
+            logger.warning(f"Invalid symbol format {symbol}: missing separator")
+            return False
+            
+        base, quote = parts
+        if not base or not quote:
+            logger.warning(f"Invalid symbol {symbol}: empty base or quote")
+            return False
+            
+        valid_quotes = ['USDT', 'USD', 'EUR', 'BTC']
+        if quote not in valid_quotes:
+            logger.warning(f"Invalid quote currency {quote} for symbol {symbol}")
+            return False
+            
+        logger.info(f"Symbol {symbol} validated successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error validating trading symbol: {str(e)}")
         return False
 
-def run_async(coroutine):
-    """Helper function to run async code."""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(coroutine)
-
 def main():
-    """Main entry point."""
+    """Main entry point with enhanced error handling and logging."""
     try:
         # Apply custom theme
         apply_custom_theme()
@@ -248,8 +325,10 @@ def main():
         sidebar_config = render_sidebar()
         if sidebar_config:
             st.session_state.sidebar_config = sidebar_config
+            logger.info("Sidebar configuration loaded successfully")
         else:
             st.error("Unable to load configuration. Please refresh the page.")
+            logger.error("Failed to load sidebar configuration")
             return
 
         # Main content tabs
@@ -264,9 +343,19 @@ def main():
             if sidebar_config.get('selected_coins'):
                 with st.spinner("Loading price analysis..."):
                     coin = sidebar_config['selected_coins'][0]
-                    symbol = f"{coin}/USDT".upper()
+                    logger.info(f"Processing selected coin: {coin}")
+                    
+                    # Get and validate trading symbol
+                    symbol = get_trading_symbol(coin)
+                    logger.info(f"Generated trading symbol: {symbol}")
+                    
+                    if not validate_trading_symbol(symbol):
+                        st.error(f"Invalid trading symbol format: {symbol}")
+                        logger.error(f"Symbol validation failed for {symbol}")
+                        return
                     
                     # Set up websocket connection using the async helper
+                    logger.info(f"Setting up websocket connection for {symbol}")
                     connection_success = run_async(
                         setup_websocket_connection(exchange_manager, symbol)
                     )
@@ -278,8 +367,11 @@ def main():
                         
                         if status_msg == 'connected':
                             st.success(f"🟢 Connected to {symbol} websocket feed")
+                            logger.info(f"Successfully connected to {symbol} websocket")
                         elif status_msg == 'error':
-                            st.error(f"🔴 Websocket error: {ws_status.get('error', 'Unknown error')}")
+                            error_msg = ws_status.get('error', 'Unknown error')
+                            st.error(f"🔴 Websocket error: {error_msg}")
+                            logger.error(f"Websocket error for {symbol}: {error_msg}")
                             if st.button("Retry Connection"):
                                 st.experimental_rerun()
                         else:
@@ -305,79 +397,84 @@ def main():
                                     "24h Volume",
                                     f"${latest.get('volume', 0):,.2f}" if latest.get('volume') else "N/A"
                                 )
-                            
+                                
                             with col3:
-                                # Calculate volatility from recent price changes
-                                volatility = np.std(st.session_state.price_changes.get(symbol, [0])) if symbol in st.session_state.price_changes else 0
-                                st.metric(
-                                    "Volatility",
-                                    f"{volatility:.2f}%"
-                                )
-                            
-                            with col4:
                                 st.metric(
                                     "Last Update",
                                     latest['timestamp'].strftime('%H:%M:%S')
                                 )
                             
                             # Create real-time chart
-                            fig = go.Figure()
-                            df = pd.DataFrame(data)
-                            
-                            # Add price line
-                            fig.add_trace(go.Scatter(
-                                x=df['timestamp'],
-                                y=df['price'],
-                                mode='lines',
-                                name='Price',
-                                line=dict(color='#17C37B', width=2)
-                            ))
-                            
-                            # Add volume bars if available
-                            if 'volume' in df.columns and not df['volume'].isnull().all():
-                                fig.add_trace(go.Bar(
+                            if len(data) > 1:
+                                df = pd.DataFrame(data)
+                                
+                                fig = go.Figure()
+                                
+                                # Add price line
+                                fig.add_trace(go.Scatter(
                                     x=df['timestamp'],
-                                    y=df['volume'],
-                                    name='Volume',
-                                    yaxis='y2',
-                                    marker_color='rgba(23, 195, 178, 0.2)'
+                                    y=df['price'],
+                                    mode='lines',
+                                    name='Price',
+                                    line=dict(color='#17C37B', width=2)
                                 ))
+                                
+                                # Add volume bars if available
+                                if 'volume' in df.columns and not df['volume'].isnull().all():
+                                    fig.add_trace(go.Bar(
+                                        x=df['timestamp'],
+                                        y=df['volume'],
+                                        name='Volume',
+                                        yaxis='y2',
+                                        marker_color='rgba(23, 195, 178, 0.2)'
+                                    ))
+                                
+                                # Update layout
+                                fig.update_layout(
+                                    title=f"{symbol} Real-time Price and Volume",
+                                    xaxis_title="Time",
+                                    yaxis_title="Price (USD)",
+                                    yaxis2=dict(
+                                        title="Volume",
+                                        overlaying="y",
+                                        side="right"
+                                    ),
+                                    height=500,
+                                    template="plotly_dark",
+                                    showlegend=True,
+                                    legend=dict(
+                                        orientation="h",
+                                        yanchor="bottom",
+                                        y=1.02,
+                                        xanchor="right",
+                                        x=1
+                                    )
+                                )
+                                
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Update and show refresh time
+                        st.caption(f"Last data update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                             
-                            # Update layout with secondary y-axis for volume
-                            fig.update_layout(
-                                title=f"{symbol} Real-time Price and Volume",
-                                xaxis_title="Time",
-                                yaxis_title="Price (USD)",
-                                yaxis2=dict(
-                                    title="Volume",
-                                    overlaying="y",
-                                    side="right",
-                                    showgrid=False
-                                ),
-                                template="plotly_dark",
-                                height=500,
-                                hovermode='x unified'
-                            )
-                            
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.info("Waiting for real-time data...")
                     else:
-                        st.error(f"Failed to establish websocket connection for {symbol}")
+                        st.error("Failed to establish websocket connection")
+                        logger.error("Websocket connection failed")
                         if st.button("Retry Connection"):
                             st.experimental_rerun()
-
+            
         # Altcoin Analysis Tab
         with tab2:
             render_altcoin_analysis()
-        
+            
         # Strategy Builder Tab
         with tab3:
             render_backtesting_section()
             
     except Exception as e:
-        logger.error(f"Application error: {str(e)}")
-        st.error("An error occurred. Please refresh the page and try again.")
+        logger.error(f"Critical error in main: {str(e)}")
+        st.error(f"An error occurred: {str(e)}")
+        if st.button("Restart Application"):
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
