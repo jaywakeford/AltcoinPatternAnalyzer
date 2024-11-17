@@ -23,163 +23,73 @@ THEME = {
     'muted': '#a0aec0'
 }
 
+# Updated SECTORS with new categories
 SECTORS = {
-    'DeFi': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX'],
-    'GameFi': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA'],
-    'RWA': ['RNDR', 'OCEAN', 'FILE', 'AR', 'HNT'],
-    'AI': ['AGIX', 'FET', 'OCEAN', 'GRT', 'RLC'],
     'Memecoins': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK'],
-    'Institutional': ['BTC', 'ETH', 'LINK', 'GRT', 'MKR'],
-    'Layer-1': ['ETH', 'SOL', 'ADA', 'AVAX', 'DOT']
+    'Real-World Assets (RWA)': ['RNDR', 'OCEAN', 'FILE', 'AR', 'HNT'],
+    'Artificial Intelligence (AI)': ['AGIX', 'FET', 'OCEAN', 'GRT', 'RLC'],
+    'Decentralized Finance (DeFi)': ['UNI', 'AAVE', 'COMP', 'MKR', 'SNX'],
+    'Blockchain Gaming': ['AXS', 'SAND', 'MANA', 'ENJ', 'GALA'],
+    'Regulatory Compliance': ['BNB', 'XRP', 'ADA', 'XLM', 'ALGO'],
+    'Institutional': ['BTC', 'ETH', 'LINK', 'GRT', 'MKR']
 }
 
 def render_altcoin_analysis(view_mode: Optional[str] = None):
     """Main function to render altcoin analysis."""
     try:
-        # Generate unique keys based on view mode
-        pairs_key = f"trading_pairs_select_{view_mode or 'default'}"
-        sectors_key = f"sectors_select_{view_mode or 'default'}"
-        
-        # Initialize session state for selections if not exists
-        if pairs_key not in st.session_state:
-            st.session_state[pairs_key] = ['BTC']
-        if sectors_key not in st.session_state:
-            st.session_state[sectors_key] = []
-
-        st.markdown("## Market Analysis")
-        
         # Initialize analyzer
         analyzer = AltcoinAnalyzer()
         
         # Fetch initial data
-        with st.spinner("Fetching market data..."):
-            df = analyzer.fetch_top_50_cryptocurrencies()
-            
-            if df.empty:
-                st.error("Unable to fetch cryptocurrency data. Please try again later.")
-                return
-            
-            # Convert numeric columns
-            numeric_columns = ['market_cap', 'volume_24h', 'change_24h', 'momentum']
-            for col in numeric_columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-            df = df.fillna(0)
-            
-            # Add sector classification
-            df['sector'] = df['symbol'].apply(lambda x: next(
-                (sector for sector, coins in SECTORS.items() if x in coins), 'Other'
-            ))
-            
-            # Add filtering options
-            col1, col2 = st.columns(2)
-            with col1:
-                selected_pairs = st.multiselect(
-                    "Select Trading Pairs",
-                    options=df['symbol'].unique(),
-                    default=['BTC'],
-                    key=pairs_key,
-                    help="Search and select multiple trading pairs"
-                )
-            
-            with col2:
-                selected_sectors = st.multiselect(
-                    "Select Sectors",
-                    options=df['sector'].unique(),
-                    key=sectors_key,
-                    help="Filter by market sectors"
-                )
-            
-            # Filter data based on selection
-            df_filtered = df.copy()  # Create a copy to avoid SettingWithCopyWarning
-            if selected_pairs:
-                if 'BTC' not in selected_pairs:
-                    selected_pairs = ['BTC'] + selected_pairs
-                df_filtered = df_filtered[df_filtered['symbol'].isin(selected_pairs)]
-            elif selected_sectors:
-                df_filtered = df_filtered[df_filtered['sector'].isin(selected_sectors)]
-                if 'BTC' not in df_filtered['symbol'].values:
-                    btc_data = df[df['symbol'] == 'BTC']
-                    if not btc_data.empty:
-                        df_filtered = pd.concat([btc_data, df_filtered])
-            
-            # Calculate rolling volatility based on view mode
-            window = 24 if view_mode == "historical" else 4
-            df_filtered.loc[:, 'volatility'] = df_filtered.groupby('symbol')['change_24h'].transform(
-                lambda x: x.rolling(window=window, min_periods=1).std()
-            ).fillna(0)
-            
-            # Market Overview Section
-            st.subheader("Market Overview")
-            metrics_col1, metrics_col2 = st.columns(2)
-            
-            with metrics_col1:
-                _render_health_gauge(50 + df_filtered['change_24h'].mean())
-            
-            with metrics_col2:
-                _render_volatility_gauge(df_filtered['volatility'].mean())
-
-            # Momentum Section
-            st.subheader("Market Momentum")
-            _render_momentum_gauge(df_filtered['momentum'].mean())
-            
-            # Market Analysis Section
-            st.subheader("Market Analysis")
-            analysis_col1, analysis_col2 = st.columns(2)
-            
-            with analysis_col1:
-                _render_volume_distribution(df_filtered)
-                _render_correlation_gauge(df_filtered)
-            
-            with analysis_col2:
-                _render_market_dominance(df_filtered)
-                _render_sector_analysis(df_filtered)
-            
+        df = analyzer.fetch_top_50_cryptocurrencies()
+        
+        if df.empty:
+            st.error("Unable to fetch cryptocurrency data. Please try again later.")
+            return
+        
+        # Convert numeric columns
+        numeric_columns = ['market_cap', 'volume_24h', 'change_24h', 'momentum']
+        for col in numeric_columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        df = df.fillna(0)
+        
+        # Add sector classification
+        df['sector'] = df['symbol'].apply(lambda x: next(
+            (sector for sector, coins in SECTORS.items() if x in coins), 'Other'
+        ))
+        
+        # Market Overview Section
+        st.subheader("Market Overview")
+        
+        # Three-column layout for gauges
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            _render_health_gauge(50 + df['change_24h'].mean())
+        with col2:
+            _render_volatility_gauge(df['momentum'].mean() if 'momentum' in df.columns else 0)
+        with col3:
+            _render_correlation_gauge(df)
+        
+        # Market Analysis Section
+        st.subheader("Market Analysis")
+        
+        # Two-column layout for visualizations
+        viz_col1, viz_col2 = st.columns(2)
+        
+        with viz_col1:
+            _render_volume_distribution(df)
+        
+        with viz_col2:
+            _render_market_dominance(df)
+        
+        # Sector Analysis Section
+        st.subheader("Sector Analysis")
+        _render_sector_performance(df)
+        
     except Exception as e:
         logger.error(f"Error in altcoin analysis: {str(e)}")
         st.error("An error occurred while analyzing market data. Please try again.")
-
-def _render_momentum_gauge(momentum: float) -> None:
-    """Render momentum gauge."""
-    try:
-        # Normalize momentum to 0-100 scale
-        momentum_normalized = min(100, max(0, float(50 + momentum)))
-        
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=momentum_normalized,
-            title={'text': "Market Momentum", 'font': {'color': THEME['text']}},
-            gauge={
-                'axis': {'range': [0, 100], 'tickcolor': THEME['muted']},
-                'bar': {'color': THEME['primary']},
-                'bgcolor': THEME['card_bg'],
-                'bordercolor': THEME['muted'],
-                'steps': [
-                    {'range': [0, 30], 'color': THEME['accent2']},
-                    {'range': [30, 70], 'color': THEME['accent1']},
-                    {'range': [70, 100], 'color': THEME['secondary']}
-                ],
-                'threshold': {
-                    'line': {'color': THEME['text'], 'width': 4},
-                    'thickness': 0.75,
-                    'value': momentum_normalized
-                }
-            }
-        ))
-        
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=THEME['background'],
-            plot_bgcolor=THEME['card_bg'],
-            height=300,
-            margin=dict(l=20, r=20, t=30, b=20),
-            font={'color': THEME['text']}
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-    except Exception as e:
-        logger.error(f"Error rendering momentum gauge: {str(e)}")
-        st.warning("Unable to display momentum gauge")
 
 def _render_health_gauge(health: float) -> None:
     """Render market health gauge."""
@@ -199,12 +109,7 @@ def _render_health_gauge(health: float) -> None:
                     {'range': [0, 30], 'color': THEME['accent2']},
                     {'range': [30, 70], 'color': THEME['accent1']},
                     {'range': [70, 100], 'color': THEME['secondary']}
-                ],
-                'threshold': {
-                    'line': {'color': THEME['text'], 'width': 4},
-                    'thickness': 0.75,
-                    'value': health_normalized
-                }
+                ]
             }
         ))
         
@@ -213,8 +118,7 @@ def _render_health_gauge(health: float) -> None:
             paper_bgcolor=THEME['background'],
             plot_bgcolor=THEME['card_bg'],
             height=300,
-            margin=dict(l=20, r=20, t=30, b=20),
-            font={'color': THEME['text']}
+            margin=dict(l=20, r=20, t=30, b=20)
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -226,8 +130,7 @@ def _render_health_gauge(health: float) -> None:
 def _render_volatility_gauge(volatility: float) -> None:
     """Render volatility gauge."""
     try:
-        # Scale volatility to 0-100
-        volatility_normalized = min(100, max(0, float(volatility * 5)))
+        volatility_normalized = min(100, max(0, float(volatility)))
         
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
@@ -242,12 +145,7 @@ def _render_volatility_gauge(volatility: float) -> None:
                     {'range': [0, 30], 'color': THEME['accent2']},
                     {'range': [30, 70], 'color': THEME['accent1']},
                     {'range': [70, 100], 'color': THEME['secondary']}
-                ],
-                'threshold': {
-                    'line': {'color': THEME['text'], 'width': 4},
-                    'thickness': 0.75,
-                    'value': volatility_normalized
-                }
+                ]
             }
         ))
         
@@ -256,8 +154,7 @@ def _render_volatility_gauge(volatility: float) -> None:
             paper_bgcolor=THEME['background'],
             plot_bgcolor=THEME['card_bg'],
             height=300,
-            margin=dict(l=20, r=20, t=30, b=20),
-            font={'color': THEME['text']}
+            margin=dict(l=20, r=20, t=30, b=20)
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -267,32 +164,26 @@ def _render_volatility_gauge(volatility: float) -> None:
         st.warning("Unable to display volatility gauge")
 
 def _render_correlation_gauge(df: pd.DataFrame) -> None:
-    """Render BTC correlation gauge with enhanced error handling for single coin selection."""
+    """Render BTC correlation gauge."""
     try:
-        # Check if BTC data is available
+        # Calculate average correlation with BTC
         btc_data = df[df['symbol'] == 'BTC']
         if btc_data.empty:
-            raise ValueError("BTC data is required for correlation calculations")
+            st.warning("BTC data not available for correlation calculation")
+            return
             
-        btc_changes = btc_data['change_24h'].values
-        
-        # Calculate correlations with proper validation
         correlations = []
         for symbol in df['symbol'].unique():
             if symbol != 'BTC':
-                coin_changes = df[df['symbol'] == symbol]['change_24h'].values
-                if len(coin_changes) == len(btc_changes) and len(coin_changes) > 1:
-                    corr = np.corrcoef(btc_changes, coin_changes)[0, 1]
-                    if not np.isnan(corr):
-                        correlations.append(corr)
+                correlation = df[df['symbol'] == symbol]['change_24h'].corr(btc_data['change_24h'])
+                if not pd.isna(correlation):
+                    correlations.append(correlation)
         
-        # Handle single coin selection
         if not correlations:
-            st.info("Select additional coins to view correlation metrics")
+            st.warning("Insufficient data for correlation calculation")
             return
             
-        # Calculate average correlation with validation
-        avg_correlation = np.mean(correlations) if correlations else 0
+        avg_correlation = np.mean(correlations)
         correlation_normalized = (avg_correlation + 1) * 50  # Scale from [-1,1] to [0,100]
         
         fig = go.Figure(go.Indicator(
@@ -308,12 +199,7 @@ def _render_correlation_gauge(df: pd.DataFrame) -> None:
                     {'range': [0, 30], 'color': THEME['accent2']},
                     {'range': [30, 70], 'color': THEME['accent1']},
                     {'range': [70, 100], 'color': THEME['secondary']}
-                ],
-                'threshold': {
-                    'line': {'color': THEME['text'], 'width': 4},
-                    'thickness': 0.75,
-                    'value': correlation_normalized
-                }
+                ]
             }
         ))
         
@@ -322,15 +208,11 @@ def _render_correlation_gauge(df: pd.DataFrame) -> None:
             paper_bgcolor=THEME['background'],
             plot_bgcolor=THEME['card_bg'],
             height=300,
-            margin=dict(l=20, r=20, t=30, b=20),
-            font={'color': THEME['text']}
+            margin=dict(l=20, r=20, t=30, b=20)
         )
         
         st.plotly_chart(fig, use_container_width=True)
         
-    except ValueError as ve:
-        logger.warning(f"Correlation gauge error: {str(ve)}")
-        st.info(str(ve))
     except Exception as e:
         logger.error(f"Error rendering correlation gauge: {str(e)}")
         st.warning("Unable to display correlation gauge")
@@ -338,11 +220,9 @@ def _render_correlation_gauge(df: pd.DataFrame) -> None:
 def _render_market_dominance(df: pd.DataFrame) -> None:
     """Render market dominance pie chart."""
     try:
-        # Get top 5 by market cap
         top_5 = df.nlargest(5, 'market_cap')
         others_market_cap = df.nsmallest(len(df)-5, 'market_cap')['market_cap'].sum()
         
-        # Create data for pie chart
         data = pd.concat([
             top_5,
             pd.DataFrame([{
@@ -351,30 +231,19 @@ def _render_market_dominance(df: pd.DataFrame) -> None:
             }])
         ])
         
-        fig = go.Figure(data=[
-            go.Pie(
-                labels=data['symbol'],
-                values=data['market_cap'],
-                hole=0.4,
-                textinfo='label+percent',
-                marker=dict(colors=[
-                    THEME['primary'],
-                    THEME['secondary'],
-                    THEME['accent1'],
-                    THEME['accent2'],
-                    THEME['accent3'],
-                    THEME['muted']
-                ])
-            )
-        ])
+        fig = go.Figure(data=[go.Pie(
+            labels=data['symbol'],
+            values=data['market_cap'],
+            hole=0.4,
+            textinfo='label+percent'
+        )])
         
         fig.update_layout(
             template="plotly_dark",
             paper_bgcolor=THEME['background'],
             plot_bgcolor=THEME['card_bg'],
             height=400,
-            title="Market Dominance",
-            showlegend=True
+            title="Market Dominance"
         )
         
         st.plotly_chart(fig, use_container_width=True)
@@ -388,15 +257,12 @@ def _render_volume_distribution(df: pd.DataFrame) -> None:
     try:
         top_10 = df.nlargest(10, 'volume_24h')
         
-        fig = go.Figure(data=[
-            go.Bar(
-                x=top_10['symbol'],
-                y=top_10['volume_24h'],
-                text=top_10['volume_24h'].apply(lambda x: f"${x:,.0f}"),
-                textposition='auto',
-                marker_color=THEME['primary']
-            )
-        ])
+        fig = go.Figure(data=[go.Bar(
+            x=top_10['symbol'],
+            y=top_10['volume_24h'],
+            text=top_10['volume_24h'].apply(lambda x: f"${x:,.0f}"),
+            textposition='auto'
+        )])
         
         fig.update_layout(
             template="plotly_dark",
@@ -414,27 +280,24 @@ def _render_volume_distribution(df: pd.DataFrame) -> None:
         logger.error(f"Error rendering volume distribution: {str(e)}")
         st.warning("Unable to display volume distribution")
 
-def _render_sector_analysis(df: pd.DataFrame) -> None:
-    """Render sector analysis."""
+def _render_sector_performance(df: pd.DataFrame) -> None:
+    """Render sector performance analysis."""
     try:
-        # Calculate sector performance
-        sector_performance = df.groupby('sector').agg({
+        # Calculate sector metrics
+        sector_metrics = df.groupby('sector').agg({
             'change_24h': 'mean',
             'market_cap': 'sum',
             'volume_24h': 'sum'
-        }).reset_index()
+        }).round(2)
         
-        # Ensure numeric values
-        for col in ['change_24h', 'market_cap', 'volume_24h']:
-            sector_performance[col] = pd.to_numeric(sector_performance[col], errors='coerce')
-        
+        # Create sector performance visualization
         fig = go.Figure(data=[
             go.Bar(
-                x=sector_performance['sector'],
-                y=sector_performance['change_24h'],
-                text=sector_performance['change_24h'].apply(lambda x: f"{x:.2f}%"),
+                x=sector_metrics.index,
+                y=sector_metrics['change_24h'],
+                text=sector_metrics['change_24h'].apply(lambda x: f"{x:,.2f}%"),
                 textposition='auto',
-                marker_color=sector_performance['change_24h'].apply(
+                marker_color=sector_metrics['change_24h'].apply(
                     lambda x: THEME['accent2'] if x > 0 else THEME['secondary']
                 )
             )
@@ -445,7 +308,7 @@ def _render_sector_analysis(df: pd.DataFrame) -> None:
             paper_bgcolor=THEME['background'],
             plot_bgcolor=THEME['card_bg'],
             height=400,
-            title="Sector Performance",
+            title="Sector Performance (24h Change)",
             xaxis_title="Sector",
             yaxis_title="Average 24h Change (%)"
         )
@@ -453,5 +316,5 @@ def _render_sector_analysis(df: pd.DataFrame) -> None:
         st.plotly_chart(fig, use_container_width=True)
         
     except Exception as e:
-        logger.error(f"Error rendering sector analysis: {str(e)}")
-        st.warning("Unable to display sector analysis")
+        logger.error(f"Error rendering sector performance: {str(e)}")
+        st.warning("Unable to display sector performance")

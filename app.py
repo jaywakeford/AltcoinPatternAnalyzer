@@ -75,54 +75,53 @@ def main():
         Welcome to the Cryptocurrency Analysis Platform!
         This platform provides real-time analysis with custom symbol format support for multiple exchanges.
         """)
-        
-        # Render sidebar first to ensure configuration is available
-        sidebar_config = render_sidebar()
-        
-        if not sidebar_config:
-            st.warning("Please configure analysis settings in the sidebar")
-            return
 
+        # Render sidebar with error handling
+        try:
+            sidebar_config = render_sidebar()
+            if not sidebar_config:
+                st.warning("Please configure analysis settings in the sidebar")
+                return
+        except Exception as e:
+            logger.error(f"Error rendering sidebar: {str(e)}")
+            st.error("Error loading configuration interface")
+            return
+        
         # Create main navigation tabs
         main_tabs = st.tabs([
             "📊 Market Overview",
-            "📈 Real-time Analysis",
-            "📉 Historical Analysis",
+            "📈 Historical Analysis",
             "⚙️ Strategy Builder"
         ])
         
         # Market Overview Tab
         with main_tabs[0]:
-            render_altcoin_analysis()
-        
-        # Real-time Analysis Tab
-        with main_tabs[1]:
-            st.subheader("Real-time Market Analysis")
-            # Add time range selector
-            st.slider(
-                "Time Window",
-                min_value=1,
-                max_value=24,
-                value=4,
-                step=1,
-                help="Select time window in hours"
-            )
-            render_altcoin_analysis(view_mode="real-time")
+            try:
+                render_altcoin_analysis(view_mode="real-time")
+            except Exception as e:
+                logger.error(f"Error rendering market overview: {str(e)}")
+                st.error("Unable to load market overview. Please try refreshing the page.")
         
         # Historical Analysis Tab
-        with main_tabs[2]:
-            st.subheader("Historical Market Analysis")
-            # Add date range selector
-            col1, col2 = st.columns(2)
-            with col1:
-                st.date_input("Start Date", datetime.now().date())
-            with col2:
-                st.date_input("End Date", datetime.now().date())
-            render_altcoin_analysis(view_mode="historical")
+        with main_tabs[1]:
+            try:
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input("Start Date", datetime.now().date())
+                with col2:
+                    end_date = st.date_input("End Date", datetime.now().date())
+                render_altcoin_analysis(view_mode="historical")
+            except Exception as e:
+                logger.error(f"Error rendering historical analysis: {str(e)}")
+                st.error("Unable to load historical analysis. Please try refreshing the page.")
         
         # Strategy Builder Tab
-        with main_tabs[3]:
-            render_backtesting_section()
+        with main_tabs[2]:
+            try:
+                render_backtesting_section()
+            except Exception as e:
+                logger.error(f"Error rendering strategy builder: {str(e)}")
+                st.error("Unable to load strategy builder. Please try refreshing the page.")
             
     except Exception as e:
         logger.error(f"Critical error in main application: {str(e)}")
