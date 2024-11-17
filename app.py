@@ -1,5 +1,4 @@
 import streamlit as st
-import pandas as pd
 import logging
 import sys
 from datetime import datetime
@@ -14,191 +13,182 @@ from utils.symbol_converter import SymbolConverter
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format='%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('app.log')
+    ]
 )
 logger = logging.getLogger(__name__)
 
-def initialize_session_state():
+def initialize_session_state() -> bool:
     """Initialize session state variables."""
     try:
         if 'initialized' not in st.session_state:
+            logger.info("Starting session state initialization")
+            
+            # Initialize symbol converter
+            st.session_state.symbol_converter = SymbolConverter()
+            
+            # Initialize other session state variables
             st.session_state.update({
                 'initialized': True,
-                'symbol_converter': None,
                 'exchange_manager': None,
-                'sidebar_config': None,
-                'symbol_cache': {},
-                'conversion_log': [],
                 'last_update': datetime.now(),
-                'cache_stats': None
+                'supported_exchanges': ['kraken', 'kucoin', 'binance']
             })
+            
             logger.info("Session state initialized successfully")
+            return True
+            
+        return True
+        
     except Exception as e:
         logger.error(f"Error initializing session state: {str(e)}")
-        raise
+        st.error(f"Error initializing application: {str(e)}")
+        return False
 
-def display_cache_metrics():
-    """Display cache metrics in a formatted way."""
+def display_exchange_formats():
+    """Display exchange-specific symbol formats with enhanced error handling."""
     try:
-        if not st.session_state.get('cache_stats'):
-            return
-
-        cache_stats = st.session_state.cache_stats
+        st.markdown("### Exchange Format Guide")
         
-        st.sidebar.markdown("### Symbol Cache Statistics")
+        symbol_converter = st.session_state.symbol_converter
         
-        # Display cache usage
-        usage_percentage = (cache_stats['cache_size'] / cache_stats['max_cache_size']) * 100
-        st.sidebar.progress(usage_percentage / 100)
-        st.sidebar.caption(f"Cache Usage: {cache_stats['cache_size']}/{cache_stats['max_cache_size']}")
+        # Create three columns for better layout
+        cols = st.columns(3)
         
-        # Display hit rate
-        if cache_stats['total_requests'] > 0:
-            hit_rate = cache_stats['hit_rate']
-            st.sidebar.metric("Cache Hit Rate", f"{hit_rate:.1f}%")
+        # Display formats for each exchange in columns
+        for idx, exchange in enumerate(st.session_state.supported_exchanges):
+            with cols[idx % 3]:
+                with st.expander(f"{exchange.capitalize()} Format Guide", expanded=True):
+                    format_info = symbol_converter.get_exchange_format_info(exchange)
+                    if format_info:
+                        st.markdown(f"**Description**: {format_info['description']}")
+                        st.markdown(f"**Example**: `{format_info['example']}`")
+                        
+                        if format_info.get('validation_rules'):
+                            st.markdown("**Validation Rules:**")
+                            for rule in format_info['validation_rules']:
+                                st.markdown(f"- {rule}")
+                        
+                        if format_info.get('special_cases'):
+                            st.markdown("**Special Cases:**")
+                            for original, special in format_info['special_cases'].items():
+                                st.code(f"{original} → {special}")
+                                
+                        # Add symbol validation example
+                        example_symbol = format_info['example']
+                        is_valid, message = symbol_converter.validate_symbol(example_symbol, exchange)
+                        st.markdown("**Validation Example:**")
+                        if is_valid:
+                            st.success(f"`{example_symbol}` - Valid format")
+                        else:
+                            st.error(f"`{example_symbol}` - {message}")
         
-        # Display cache TTL
-        st.sidebar.metric("Cache TTL", f"{cache_stats['cache_ttl_hours']:.1f} hours")
+        logger.debug("Exchange formats displayed successfully")
         
-        # Display active pairs in an expander
-        with st.sidebar.expander("Frequently Used Pairs"):
-            if cache_stats.get('frequently_used_pairs'):
-                for pair in cache_stats['frequently_used_pairs']:
-                    st.code(pair, language='text')
-            else:
-                st.info("No frequently used pairs configured")
-                
-        # Display recent cache operations
-        with st.sidebar.expander("Cache Operations"):
-            st.metric("Cache Hits", cache_stats['cache_hits'])
-            st.metric("Cache Misses", cache_stats['cache_misses'])
-            st.text(f"Last Clear: {cache_stats['last_clear']}")
-
     except Exception as e:
-        logger.error(f"Error displaying cache metrics: {str(e)}")
-        st.sidebar.error("Error displaying cache statistics")
+        logger.error(f"Error displaying exchange formats: {str(e)}")
+        st.error("Error displaying format examples")
+
+def show_symbol_conversions(coins: list):
+    """Display symbol conversion examples with validation."""
+    try:
+        st.markdown("### Symbol Conversion Examples")
+        
+        symbol_converter = st.session_state.symbol_converter
+        
+        # Create columns for the conversion examples
+        cols = st.columns(2)
+        
+        for idx, coin in enumerate(coins):
+            with cols[idx % 2]:
+                with st.expander(f"{coin.capitalize()} Format Examples", expanded=True):
+                    # Get standard symbol
+                    standard_symbol = symbol_converter.convert_from_coin_name(coin)
+                    if standard_symbol:
+                        st.markdown(f"**Standard Format**: `{standard_symbol}`")
+                        
+                        # Show exchange-specific formats
+                        for exchange in st.session_state.supported_exchanges:
+                            st.markdown(f"\n**{exchange.capitalize()}**:")
+                            exchange_symbol = symbol_converter.convert_to_exchange_format(
+                                standard_symbol, exchange
+                            )
+                            if exchange_symbol:
+                                is_valid, message = symbol_converter.validate_symbol(exchange_symbol, exchange)
+                                st.code(exchange_symbol)
+                                if is_valid:
+                                    st.success("✓ Valid format")
+                                else:
+                                    st.warning(f"⚠ {message}")
+                            else:
+                                st.error(f"Could not convert to {exchange} format")
+                    else:
+                        st.warning(f"Could not convert {coin} to standard format")
+                    
+    except Exception as e:
+        logger.error(f"Error showing symbol conversions: {str(e)}")
+        st.error("Error displaying symbol conversions")
 
 def main():
-    """Main application entry point."""
+    """Main application entry point with enhanced error handling."""
     try:
-        # Set page config first
+        # Set page config
         st.set_page_config(
             page_title="Crypto Analysis Platform",
             page_icon="📈",
             layout="wide",
             initial_sidebar_state="expanded"
         )
-
+        
         # Apply custom theme
         apply_custom_theme()
-
+        
         # Initialize session state
-        initialize_session_state()
-
-        # Initialize components only if not already initialized
-        if not st.session_state.get('symbol_converter'):
-            st.session_state.symbol_converter = SymbolConverter()
-            logger.info("SymbolConverter initialized")
-
+        if not initialize_session_state():
+            return
+        
+        # Initialize exchange manager if needed
         if not st.session_state.get('exchange_manager'):
             st.session_state.exchange_manager = ExchangeManager()
-            logger.info("ExchangeManager initialized")
-
-        # Update cache statistics
-        st.session_state.cache_stats = st.session_state.symbol_converter.get_cache_stats()
-
+        
         # Page title and description
         st.title("Cryptocurrency Analysis Platform")
         st.markdown("""
-        Welcome to the Cryptocurrency Analysis Platform! 
-        Select cryptocurrencies from the sidebar to begin analysis.
+        Welcome to the Cryptocurrency Analysis Platform!
+        This platform provides real-time analysis with custom symbol format support for multiple exchanges.
         """)
-
-        # Render sidebar with cache metrics
+        
+        # Get sidebar configuration
         sidebar_config = render_sidebar()
-        st.session_state.sidebar_config = sidebar_config
-        display_cache_metrics()
-
+        
         # Main content area
         if sidebar_config and sidebar_config.get('selected_coins'):
-            selected_coins = sidebar_config['selected_coins']
-
-            # Create main columns
-            col1, col2 = st.columns([2, 1])
-
-            # Dictionary to store converted symbols
-            converted_symbols = {}
-
-            with col1:
-                # Symbol conversion and analysis section
-                for coin in selected_coins:
-                    with st.container():
-                        st.markdown(f"### Analysis for {coin}")
-                        
-                        if st.session_state.symbol_converter:
-                            trading_symbol = st.session_state.symbol_converter.convert_from_coin_name(coin)
-                            converted_symbols[coin] = trading_symbol
-                            
-                            if trading_symbol:
-                                st.success(f"Trading Symbol: {trading_symbol}")
-                                
-                                # Show conversion details
-                                with st.expander("Symbol Conversion Details"):
-                                    st.json({
-                                        "original": coin,
-                                        "trading_symbol": trading_symbol,
-                                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                        "cache_status": "hit" if trading_symbol in st.session_state.cache_stats['active_keys'] else "miss"
-                                    })
-                            else:
-                                st.error(f"Could not convert {coin} to trading symbol")
-
-            with col2:
-                # Cache monitoring section
-                st.markdown("### Cache Monitor")
-                if st.session_state.cache_stats:
-                    # Display active cache entries
-                    with st.expander("Active Cache Entries", expanded=False):
-                        active_keys = st.session_state.cache_stats['active_keys']
-                        if active_keys:
-                            for key in active_keys:
-                                st.code(key, language='text')
-                        else:
-                            st.info("No active cache entries")
-                    
-                    # Cache maintenance controls
-                    if st.button("Clear Cache"):
-                        st.session_state.symbol_converter.clear_cache()
-                        st.session_state.cache_stats = st.session_state.symbol_converter.get_cache_stats()
-                        st.success("Cache cleared successfully")
-
-            # Analysis tabs
-            tab1, tab2, tab3 = st.tabs([
-                "📈 Market Analysis",
-                "🔄 Altcoin Analysis",
+            tabs = st.tabs([
+                "📈 Symbol Formats",
+                "🔄 Market Analysis",
                 "⚙️ Strategy Builder"
             ])
-
-            with tab1:
-                st.markdown("### Market Analysis")
-                for coin, symbol in converted_symbols.items():
-                    if symbol:
-                        st.info(f"Analyzing {symbol}")
-
-            with tab2:
+            
+            with tabs[0]:
+                # Display exchange formats and symbol conversion examples
+                display_exchange_formats()
+                show_symbol_conversions(sidebar_config['selected_coins'])
+            
+            with tabs[1]:
                 render_altcoin_analysis()
-
-            with tab3:
+            
+            with tabs[2]:
                 render_backtesting_section()
-
+        
         else:
             st.info("👈 Please select cryptocurrencies from the sidebar to begin analysis.")
-
+            
     except Exception as e:
         logger.error(f"Critical error in main application: {str(e)}")
         st.error("An unexpected error occurred. Please try again.")
-        st.exception(e)
 
 if __name__ == "__main__":
     main()

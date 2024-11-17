@@ -19,6 +19,32 @@ class ConnectionState(Enum):
     RECONNECTING = "reconnecting"
     ERROR = "error"
 
+class SymbolConverter:
+    def __init__(self):
+        self.valid_base_currencies = {
+            'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'ADA', 
+            'AVAX', 'DOT', 'MATIC', 'LINK', 'UNI', 'LTC'
+        }
+        self.valid_quote_currencies = {'USDT', 'USD', 'EUR', 'BTC'}
+
+    def convert_to_exchange_format(self, symbol: str, exchange: str) -> Optional[str]:
+        """Convert standard symbol to exchange-specific format."""
+        if exchange.lower() == 'kraken':
+            return symbol
+        elif exchange.lower() == 'kucoin':
+            return symbol.replace('/', '-')
+        else:
+            return None
+
+    def convert_from_exchange_format(self, symbol: str, exchange: str) -> Optional[str]:
+        """Convert exchange-specific symbol to standard format."""
+        if exchange.lower() == 'kraken':
+            return symbol
+        elif exchange.lower() == 'kucoin':
+            return symbol.replace('-', '/')
+        else:
+            return None
+
 class WebSocketManager:
     def __init__(self):
         self.connections: Dict[str, Any] = {}
@@ -40,6 +66,47 @@ class WebSocketManager:
         self.valid_quote_currencies = {'USDT', 'USD', 'EUR', 'BTC'}
         self._loop = None
 
+        # Add exchange-specific websocket configurations
+        self.exchange_configs = {
+            'kraken': {
+                'url': 'wss://ws.kraken.com',
+                'subscribe_format': lambda symbol: {
+                    "event": "subscribe",
+                    "pair": [symbol],
+                    "subscription": {"name": "ticker"}
+                },
+                'requires_auth': True,
+                'ping_interval': 30,
+                'connection_timeout': 10000
+            },
+            'kucoin': {
+                'url': 'wss://ws-api.kucoin.com/endpoint',
+                'subscribe_format': lambda symbol: {
+                    "type": "subscribe",
+                    "topic": f"/market/ticker:{symbol}",
+                    "privateChannel": False,
+                    "response": True
+                },
+                'requires_auth': False,
+                'ping_interval': 20,
+                'connection_timeout': 5000
+            },
+            'binance': {
+                'url': 'wss://stream.binance.com:9443/ws',
+                'subscribe_format': lambda symbol: {
+                    "method": "SUBSCRIBE",
+                    "params": [f"{symbol.lower()}@ticker"],
+                    "id": 1
+                },
+                'requires_auth': False,
+                'ping_interval': 30,
+                'connection_timeout': 5000
+            }
+        }
+        
+        # Create SymbolConverter instance for format conversion
+        self.symbol_converter = SymbolConverter()
+
     @property
     def loop(self) -> asyncio.AbstractEventLoop:
         """Get or create event loop."""
@@ -51,31 +118,35 @@ class WebSocketManager:
                 asyncio.set_event_loop(self._loop)
         return self._loop
 
-    def _validate_symbol(self, symbol: str) -> bool:
-        """Validate symbol format with enhanced checks."""
+    def _validate_symbol(self, symbol: str, exchange: str = 'default') -> bool:
+        """Validate symbol format with exchange-specific checks."""
         try:
             if not symbol or not isinstance(symbol, str):
                 logger.warning(f"Invalid symbol: {symbol} - Must be a non-empty string")
                 return False
                 
-            # Check format using regex
-            if not re.match(r'^[A-Z0-9]+/[A-Z0-9]+$', symbol):
-                logger.warning(f"Invalid symbol format: {symbol} - Must be in BASE/QUOTE format")
+            # First convert to standard format if it's in exchange format
+            standard_symbol = self.symbol_converter.convert_from_exchange_format(symbol, exchange)
+            if not standard_symbol:
+                standard_symbol = symbol  # Try with original symbol if conversion fails
+                
+            # Check format using regex for standard format
+            if not re.match(r'^[A-Z0-9]+/[A-Z0-9]+$', standard_symbol):
+                logger.warning(f"Invalid symbol format: {standard_symbol}")
                 return False
                 
-            base, quote = symbol.split('/')
+            base, quote = standard_symbol.split('/')
             
-            # Validate base currency
-            if base not in self.valid_base_currencies:
-                logger.warning(f"Invalid base currency: {base} - Must be one of {self.valid_base_currencies}")
+            # Validate currencies using symbol converter's valid sets
+            if base not in self.symbol_converter.valid_base_currencies:
+                logger.warning(f"Invalid base currency: {base}")
                 return False
                 
-            # Validate quote currency
-            if quote not in self.valid_quote_currencies:
-                logger.warning(f"Invalid quote currency: {quote} - Must be one of {self.valid_quote_currencies}")
+            if quote not in self.symbol_converter.valid_quote_currencies:
+                logger.warning(f"Invalid quote currency: {quote}")
                 return False
                 
-            logger.info(f"Symbol validated successfully: {symbol}")
+            logger.info(f"Symbol validated successfully: {symbol} for exchange {exchange}")
             return True
             
         except Exception as e:
@@ -83,49 +154,41 @@ class WebSocketManager:
             return False
 
     async def _get_exchange_config(self, exchange: str, symbol: str) -> Tuple[str, dict]:
-        """Get exchange-specific websocket configuration."""
-        if exchange.lower() == 'kraken':
-            # Get API key for authentication
-            api_key = os.getenv("KRAKEN_API_KEY")
-            api_secret = os.getenv("KRAKEN_SECRET")
+        """Get exchange-specific websocket configuration with proper symbol format."""
+        try:
+            if exchange.lower() not in self.exchange_configs:
+                raise ValueError(f"Unsupported exchange: {exchange}")
+
+            config = self.exchange_configs[exchange.lower()]
             
-            # Generate authentication token if credentials are available
-            auth = {}
+            # Convert symbol to exchange-specific format
+            exchange_symbol = self.symbol_converter.convert_to_exchange_format(symbol, exchange)
+            if not exchange_symbol:
+                raise ValueError(f"Could not convert symbol {symbol} to {exchange} format")
+
+            # Get API key for authentication if needed
+            api_key = os.getenv(f"{exchange.upper()}_API_KEY")
+            api_secret = os.getenv(f"{exchange.upper()}_SECRET")
+            
+            # Generate subscription message
+            subscription = config['subscribe_format'](exchange_symbol)
+            
+            # Add authentication if available
             if api_key and api_secret:
-                nonce = int(time.time() * 1000)
-                auth = {
+                subscription.update({
                     "apiKey": api_key,
-                    "nonce": nonce
-                }
-            
-            return (
-                "wss://ws.kraken.com",
-                {
-                    "event": "subscribe",
-                    "pair": [symbol],
-                    "subscription": {
-                        "name": "ticker"
-                    },
-                    **auth
-                }
-            )
-        elif exchange.lower() == 'kucoin':
-            # Add KuCoin authentication if needed
-            return (
-                "wss://ws-api.kucoin.com/endpoint",
-                {
-                    "type": "subscribe",
-                    "topic": f"/market/ticker:{symbol}",
-                    "privateChannel": False,
-                    "response": True
-                }
-            )
-        else:
-            raise ValueError(f"Unsupported exchange: {exchange}")
+                    "nonce": int(time.time() * 1000)
+                })
+
+            return config['url'], subscription
+
+        except Exception as e:
+            logger.error(f"Error getting exchange config: {str(e)}")
+            raise
 
     async def connect(self, symbol: str, exchange: str, callback: Callable[[Dict[str, Any]], None]) -> None:
         """Connect to exchange websocket with enhanced connection lifecycle management."""
-        if not self._validate_symbol(symbol):
+        if not self._validate_symbol(symbol, exchange):
             logger.error(f"Invalid symbol format: {symbol}")
             raise ValueError(f"Invalid symbol format: {symbol}. Symbol must be in BASE/QUOTE format (e.g., BTC/USDT)")
             
