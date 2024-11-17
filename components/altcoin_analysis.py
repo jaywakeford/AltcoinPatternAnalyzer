@@ -53,7 +53,7 @@ def render_altcoin_analysis(view_mode: Optional[str] = None) -> None:
                 options=available_pairs,
                 default=["BTC/USDT"],
                 help="Choose assets to analyze",
-                key="market_analysis_assets"  # Added unique key
+                key=f"market_analysis_assets_{view_mode}"  # Updated key to be unique per view mode
             )
 
         with col2:
@@ -189,12 +189,8 @@ def _render_volatility_gauge(volatility: float) -> None:
         st.warning("Unable to display momentum gauge")
 
 def _render_correlation_gauge(df: pd.DataFrame, selected_assets: List[str]) -> None:
-    """Render BTC correlation gauge."""
     try:
-        if 'BTC/USDT' not in selected_assets:
-            st.warning("BTC/USDT is required for correlation calculation")
-            return
-            
+        # Get BTC data first
         btc_data = df[df['symbol'] == 'BTC']
         if btc_data.empty:
             st.warning("BTC data not available for correlation calculation")
@@ -203,11 +199,19 @@ def _render_correlation_gauge(df: pd.DataFrame, selected_assets: List[str]) -> N
         correlations = []
         for symbol in selected_assets:
             if symbol != 'BTC/USDT':
-                asset_data = df[df['symbol'] == symbol.split('/')[0]]
+                # Extract base symbol from trading pair
+                base_symbol = symbol.split('/')[0]
+                asset_data = df[df['symbol'] == base_symbol]
+                
                 if not asset_data.empty:
-                    correlation = asset_data['change_24h'].corr(btc_data['change_24h'])
-                    if not pd.isna(correlation):
-                        correlations.append(correlation)
+                    # Calculate correlation using both price change and momentum
+                    price_corr = asset_data['change_24h'].corr(btc_data['change_24h'])
+                    momentum_corr = asset_data['momentum'].corr(btc_data['momentum'])
+                    
+                    # Take average of both correlations
+                    if not pd.isna(price_corr) and not pd.isna(momentum_corr):
+                        avg_corr = (price_corr + momentum_corr) / 2
+                        correlations.append(avg_corr)
         
         if not correlations:
             st.warning("Insufficient data for correlation calculation")
@@ -216,11 +220,17 @@ def _render_correlation_gauge(df: pd.DataFrame, selected_assets: List[str]) -> N
         avg_correlation = np.mean(correlations)
         correlation_normalized = (avg_correlation + 1) * 50  # Scale from [-1,1] to [0,100]
         
+        # Add debug logging
+        logger.info(f"BTC correlation values: {correlations}")
+        logger.info(f"Average correlation: {avg_correlation:.2f}")
+        logger.info(f"Normalized correlation: {correlation_normalized:.2f}%")
+        
+        # Update gauge display
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=correlation_normalized,
             title={'text': "BTC Correlation", 'font': {'size': 24, 'color': THEME['text']}},
-            number={'suffix': "%", 'font': {'size': 20}},
+            number={'suffix': "%", 'font': {'size': 20}, 'valueformat': ".1f"},
             gauge={
                 'axis': {'range': [0, 100], 'tickwidth': 1},
                 'bar': {'color': THEME['accent3']},
