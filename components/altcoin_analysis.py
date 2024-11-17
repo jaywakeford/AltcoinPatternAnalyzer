@@ -33,7 +33,7 @@ SECTORS = {
     'Layer-1': ['ETH', 'SOL', 'ADA', 'AVAX', 'DOT']
 }
 
-def render_altcoin_analysis():
+def render_altcoin_analysis(view_mode: Optional[str] = None):
     """Main function to render altcoin analysis."""
     try:
         st.markdown("## Market Analysis")
@@ -61,58 +61,72 @@ def render_altcoin_analysis():
             ))
             
             # Add filtering options
-            selected_pairs = st.multiselect(
-                "Select Trading Pairs",
-                options=df['symbol'].unique(),
-                default=['BTC'],
-                help="Search and select multiple trading pairs"
-            )
+            col1, col2 = st.columns(2)
+            with col1:
+                selected_pairs = st.multiselect(
+                    "Select Trading Pairs",
+                    options=df['symbol'].unique(),
+                    default=['BTC'],
+                    help="Search and select multiple trading pairs"
+                )
             
-            selected_sectors = st.multiselect(
-                "Select Sectors",
-                options=df['sector'].unique(),
-                help="Filter by market sectors"
-            )
+            with col2:
+                selected_sectors = st.multiselect(
+                    "Select Sectors",
+                    options=df['sector'].unique(),
+                    help="Filter by market sectors"
+                )
             
             # Filter data based on selection
             df_filtered = df
             if selected_pairs:
+                # Always include BTC in the filtered data for correlation calculations
+                if 'BTC' not in selected_pairs:
+                    selected_pairs = ['BTC'] + selected_pairs
                 df_filtered = df[df['symbol'].isin(selected_pairs)]
             elif selected_sectors:
                 df_filtered = df[df['sector'].isin(selected_sectors)]
+                # Ensure BTC is included
+                if 'BTC' not in df_filtered['symbol'].values:
+                    btc_data = df[df['symbol'] == 'BTC']
+                    if not btc_data.empty:
+                        df_filtered = pd.concat([btc_data, df_filtered])
             
-            # Calculate volatility using rolling standard deviation
-            df_filtered['volatility'] = (
-                df_filtered.groupby('symbol')['change_24h']
-                .transform(lambda x: x.rolling(window=24, min_periods=1).std())
-                .fillna(0)
-            )
+            # Calculate rolling volatility based on view mode
+            window = 24 if view_mode == "historical" else 4
+            df_filtered['volatility'] = df_filtered.groupby('symbol')['change_24h'].transform(
+                lambda x: x.rolling(window=window, min_periods=1).std()
+            ).fillna(0)
             
-            # Create market overview metrics
-            col1, col2, col3, col4 = st.columns(4)
+            # Market Overview Section
+            st.subheader("Market Overview")
+            metrics_col1, metrics_col2 = st.columns(2)
             
-            with col1:
-                _render_momentum_gauge(df_filtered['momentum'].mean())
-            with col2:
-                _render_volatility_gauge(df_filtered['volatility'].mean())
-            with col3:
-                _render_health_gauge(50 + df_filtered['change_24h'].mean())
-            with col4:
-                _render_correlation_gauge(df_filtered)
+            with metrics_col1:
+                col1, col2 = st.columns(2)
+                with col1:
+                    _render_volatility_gauge(df_filtered['volatility'].mean())
+                with col2:
+                    _render_health_gauge(50 + df_filtered['change_24h'].mean())
             
-            # Market structure
-            st.subheader("Market Structure")
-            col1, col2 = st.columns(2)
-            with col1:
-                _render_market_dominance(df_filtered)
-            with col2:
+            with metrics_col2:
+                col1, col2 = st.columns(2)
+                with col1:
+                    _render_market_dominance(df_filtered)
+                with col2:
+                    _render_correlation_gauge(df_filtered)
+            
+            # Market Analysis Section
+            st.subheader("Market Analysis")
+            analysis_col1, analysis_col2 = st.columns(2)
+            
+            with analysis_col1:
                 _render_volume_distribution(df_filtered)
             
-            # Sector analysis
-            st.subheader("Sector Performance")
-            _render_sector_analysis(df_filtered)
+            with analysis_col2:
+                _render_sector_analysis(df_filtered)
             
-            # Risk assessment
+            # Risk Assessment
             st.subheader("Risk Assessment")
             _render_risk_assessment(df_filtered)
             
@@ -249,13 +263,15 @@ def _render_health_gauge(health: float) -> None:
         st.warning("Unable to display health gauge")
 
 def _render_correlation_gauge(df: pd.DataFrame) -> None:
-    """Render BTC correlation gauge."""
+    """Render BTC correlation gauge with enhanced error handling for single coin selection."""
     try:
-        # Get BTC price changes
-        btc_changes = df[df['symbol'] == 'BTC']['change_24h'].values
-        if len(btc_changes) == 0:
-            raise ValueError("No BTC data available")
+        # Check if BTC data is available
+        btc_data = df[df['symbol'] == 'BTC']
+        if btc_data.empty:
+            raise ValueError("BTC data is required for correlation calculations")
             
+        btc_changes = btc_data['change_24h'].values
+        
         # Calculate correlations with proper validation
         correlations = []
         for symbol in df['symbol'].unique():
@@ -266,6 +282,11 @@ def _render_correlation_gauge(df: pd.DataFrame) -> None:
                     if not np.isnan(corr):
                         correlations.append(corr)
         
+        # Handle single coin selection
+        if not correlations:
+            st.info("Select additional coins to view correlation metrics")
+            return
+            
         # Calculate average correlation with validation
         avg_correlation = np.mean(correlations) if correlations else 0
         correlation_normalized = (avg_correlation + 1) * 50  # Scale from [-1,1] to [0,100]
@@ -303,6 +324,9 @@ def _render_correlation_gauge(df: pd.DataFrame) -> None:
         
         st.plotly_chart(fig, use_container_width=True)
         
+    except ValueError as ve:
+        logger.warning(f"Correlation gauge error: {str(ve)}")
+        st.info(str(ve))
     except Exception as e:
         logger.error(f"Error rendering correlation gauge: {str(e)}")
         st.warning("Unable to display correlation gauge")
@@ -429,31 +453,58 @@ def _render_sector_analysis(df: pd.DataFrame) -> None:
         st.warning("Unable to display sector analysis")
 
 def _render_risk_assessment(df: pd.DataFrame) -> None:
-    """Render risk assessment."""
+    """Render risk assessment visualization."""
     try:
-        # Calculate risk scores
-        df['risk_score'] = (
-            df['volatility'] * 0.4 +
-            abs(df['change_24h']) * 0.3 +
-            (df['market_cap'].rank(ascending=True) / len(df)) * 0.3
+        # Calculate risk metrics
+        risk_data = df.copy()
+        risk_data['risk_score'] = (
+            risk_data['volatility'] * 0.4 +
+            abs(risk_data['change_24h']) * 0.3 +
+            (risk_data['volume_24h'] / risk_data['market_cap']) * 0.3
         ) * 100
         
-        # Get top coins by market cap
-        top_coins = df.nlargest(6, 'market_cap')
+        # Normalize risk score
+        risk_data['risk_score'] = risk_data['risk_score'].clip(0, 100)
         
-        # Create columns for metrics
-        cols = st.columns(3)
+        # Create risk visualization
+        fig = go.Figure()
         
-        # Display risk metrics
-        for i, (_, coin) in enumerate(top_coins.iterrows()):
-            with cols[i % 3]:
-                st.metric(
-                    label=f"{coin['symbol']} Risk Score",
-                    value=f"{coin['risk_score']:.1f}",
-                    delta=f"{coin['change_24h']:.1f}%",
-                    delta_color="normal"
-                )
-                
+        # Add scatter plot
+        fig.add_trace(go.Scatter(
+            x=risk_data['volatility'],
+            y=risk_data['change_24h'],
+            mode='markers+text',
+            marker=dict(
+                size=risk_data['risk_score'],
+                color=risk_data['risk_score'],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title='Risk Score')
+            ),
+            text=risk_data['symbol'],
+            textposition='top center',
+            hovertemplate=(
+                '<b>%{text}</b><br>' +
+                'Volatility: %{x:.2f}<br>' +
+                'Change 24h: %{y:.2f}%<br>' +
+                'Risk Score: %{marker.size:.0f}<br>' +
+                '<extra></extra>'
+            )
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=THEME['background'],
+            plot_bgcolor=THEME['card_bg'],
+            height=500,
+            title="Risk Assessment Matrix",
+            xaxis_title="Volatility",
+            yaxis_title="24h Change (%)",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
     except Exception as e:
         logger.error(f"Error rendering risk assessment: {str(e)}")
         st.warning("Unable to display risk assessment")

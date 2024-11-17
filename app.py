@@ -35,7 +35,9 @@ def initialize_session_state() -> bool:
                 'initialized': True,
                 'exchange_manager': ExchangeManager(),
                 'last_update': datetime.now(),
-                'supported_exchanges': ['kraken', 'kucoin', 'binance']
+                'supported_exchanges': ['kraken', 'kucoin', 'binance'],
+                'selected_timeframe': '1d',
+                'selected_view': 'real-time'
             })
             
             logger.info("Session state initialized successfully")
@@ -80,19 +82,46 @@ def main():
         if not sidebar_config:
             st.warning("Please configure analysis settings in the sidebar")
             return
-        
-        # Create main tabs - Removed duplicate momentum tab
-        tabs = st.tabs([
-            "📊 Market Analysis",
+
+        # Create main navigation tabs
+        main_tabs = st.tabs([
+            "📊 Market Overview",
+            "📈 Real-time Analysis",
+            "📉 Historical Analysis",
             "⚙️ Strategy Builder"
         ])
         
-        # Market Analysis Tab
-        with tabs[0]:
+        # Market Overview Tab
+        with main_tabs[0]:
             render_altcoin_analysis()
         
+        # Real-time Analysis Tab
+        with main_tabs[1]:
+            st.subheader("Real-time Market Analysis")
+            # Add time range selector
+            st.slider(
+                "Time Window",
+                min_value=1,
+                max_value=24,
+                value=4,
+                step=1,
+                help="Select time window in hours"
+            )
+            render_altcoin_analysis(view_mode="real-time")
+        
+        # Historical Analysis Tab
+        with main_tabs[2]:
+            st.subheader("Historical Market Analysis")
+            # Add date range selector
+            col1, col2 = st.columns(2)
+            with col1:
+                st.date_input("Start Date", datetime.now().date())
+            with col2:
+                st.date_input("End Date", datetime.now().date())
+            render_altcoin_analysis(view_mode="historical")
+        
         # Strategy Builder Tab
-        with tabs[1]:
+        with main_tabs[3]:
             render_backtesting_section()
             
     except Exception as e:
