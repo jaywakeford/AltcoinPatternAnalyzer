@@ -89,18 +89,18 @@ def main():
         
         # Create main navigation tabs
         main_tabs = st.tabs([
-            "📊 Market Overview",
+            "📊 Market Analysis",
             "📈 Historical Analysis",
             "⚙️ Strategy Builder"
         ])
         
-        # Market Overview Tab
+        # Market Analysis Tab (consolidated with momentum)
         with main_tabs[0]:
             try:
                 render_altcoin_analysis(view_mode="real-time")
             except Exception as e:
-                logger.error(f"Error rendering market overview: {str(e)}")
-                st.error("Unable to load market overview. Please try refreshing the page.")
+                logger.error(f"Error rendering market analysis: {str(e)}")
+                st.error("Unable to load market analysis. Please try refreshing the page.")
         
         # Historical Analysis Tab
         with main_tabs[1]:
