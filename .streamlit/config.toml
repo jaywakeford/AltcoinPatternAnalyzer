@@ -18,8 +18,8 @@ textColor = "#FAFAFA"
 font = "sans serif"
 
 [ui]
-hideTopBar = true
-hideSidebarNav = true
+hideTopBar = false
+hideSidebarNav = false
 
 [client]
 toolbarMode = "minimal"
