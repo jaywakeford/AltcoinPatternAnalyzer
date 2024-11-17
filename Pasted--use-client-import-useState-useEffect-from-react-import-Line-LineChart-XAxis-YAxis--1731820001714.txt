@@ -1,0 +1,287 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell } from "recharts"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { AlertCircle, TrendingUp, BarChart2, PieChartIcon, Activity } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Progress } from "@/components/ui/progress"
+import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
+
+// Mock data for the chart (extended)
+const chartData = [
+  { date: "2023-01", btcDominance: 40, altcoinA: 10, altcoinB: 5, altcoinC: 3, altcoinD: 2, altcoinE: 1, totalMarketCap: 1000 },
+  { date: "2023-02", btcDominance: 38, altcoinA: 11, altcoinB: 6, altcoinC: 4, altcoinD: 3, altcoinE: 2, totalMarketCap: 1050 },
+  { date: "2023-03", btcDominance: 35, altcoinA: 13, altcoinB: 8, altcoinC: 5, altcoinD: 4, altcoinE: 3, totalMarketCap: 1100 },
+  { date: "2023-04", btcDominance: 33, altcoinA: 14, altcoinB: 9, altcoinC: 6, altcoinD: 5, altcoinE: 4, totalMarketCap: 1200 },
+  { date: "2023-05", btcDominance: 30, altcoinA: 16, altcoinB: 11, altcoinC: 8, altcoinD: 7, altcoinE: 6, totalMarketCap: 1300 },
+]
+
+// Mock data for altcoin sequencing
+const altcoinSequence = [
+  { name: "Altcoin A", buySignal: "Strong", exitPoint: "$100", momentum: "High", riskScore: 75, predictedGrowth: 25, marketShare: 30 },
+  { name: "Altcoin B", buySignal: "Moderate", exitPoint: "$50", momentum: "Medium", riskScore: 60, predictedGrowth: 15, marketShare: 25 },
+  { name: "Altcoin C", buySignal: "Weak", exitPoint: "$30", momentum: "Low", riskScore: 40, predictedGrowth: 5, marketShare: 15 },
+  { name: "Altcoin D", buySignal: "Strong", exitPoint: "$80", momentum: "High", riskScore: 80, predictedGrowth: 30, marketShare: 20 },
+  { name: "Altcoin E", buySignal: "Moderate", exitPoint: "$40", momentum: "Medium", riskScore: 55, predictedGrowth: 10, marketShare: 10 },
+]
+
+// Mock data for trend analysis
+const trendAnalysisData = [
+  { date: "2023-01", trendStrength: 60, volatility: 20 },
+  { date: "2023-02", trendStrength: 65, volatility: 25 },
+  { date: "2023-03", trendStrength: 75, volatility: 30 },
+  { date: "2023-04", trendStrength: 80, volatility: 22 },
+  { date: "2023-05", trendStrength: 85, volatility: 18 },
+]
+
+const colorPalette = {
+  background: "#1a1a2e",
+  cardBackground: "#16213e",
+  primary: "#0f3460",
+  secondary: "#e94560",
+  accent1: "#f0a500",
+  accent2: "#00af91",
+  accent3: "#0a81ab",
+  accent4: "#7b2cbf",
+  text: "#ffffff",
+  muted: "#a0aec0",
+}
+
+export default function AdvancedCryptoDashboard() {
+  const [selectedCohort, setSelectedCohort] = useState("all")
+  const [timeRange, setTimeRange] = useState([0, 100])
+  const [showPredictions, setShowPredictions] = useState(false)
+
+  const chartConfig = {
+    btcDominance: { label: "BTC Dominance", color: colorPalette.primary },
+    altcoinA: { label: "Altcoin A", color: colorPalette.secondary },
+    altcoinB: { label: "Altcoin B", color: colorPalette.accent1 },
+    altcoinC: { label: "Altcoin C", color: colorPalette.accent2 },
+    altcoinD: { label: "Altcoin D", color: colorPalette.accent3 },
+    altcoinE: { label: "Altcoin E", color: colorPalette.accent4 },
+  }
+
+  useEffect(() => {
+    const filteredData = chartData.slice(
+      Math.floor(timeRange[0] / 100 * chartData.length),
+      Math.ceil(timeRange[1] / 100 * chartData.length)
+    )
+    // Update charts with filteredData
+  }, [timeRange])
+
+  return (
+    <div className="min-h-screen w-full p-4 bg-[#1a1a2e] text-white">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Advanced Crypto Analytics Dashboard</h1>
+          <div className="flex items-center space-x-4">
+            <Select value={selectedCohort} onValueChange={setSelectedCohort}>
+              <SelectTrigger className="w-[180px] bg-[#16213e] border-[#0f3460]">
+                <SelectValue placeholder="Select cohort" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#16213e] border-[#0f3460]">
+                <SelectItem value="all">All Altcoins</SelectItem>
+                <SelectItem value="defi">DeFi</SelectItem>
+                <SelectItem value="nft">NFT</SelectItem>
+                <SelectItem value="layer1">Layer 1</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" className="gap-2 bg-[#0f3460] text-white border-[#e94560] hover:bg-[#e94560] hover:text-white">
+              <AlertCircle className="h-4 w-4" />
+              Real-time Alerts
+            </Button>
+          </div>
+        </div>
+
+        <Card className="bg-[#16213e] border-[#0f3460]">
+          <CardHeader>
+            <CardTitle className="text-white">Market Overview</CardTitle>
+            <CardDescription className="text-[#a0aec0]">Comprehensive analysis of cryptocurrency market trends and predictions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="marketCap" className="w-full">
+              <TabsList className="bg-[#0f3460] text-white">
+                <TabsTrigger value="marketCap" className="data-[state=active]:bg-[#e94560]">Market Cap</TabsTrigger>
+                <TabsTrigger value="trendAnalysis" className="data-[state=active]:bg-[#e94560]">Trend Analysis</TabsTrigger>
+                <TabsTrigger value="riskAssessment" className="data-[state=active]:bg-[#e94560]">Risk Assessment</TabsTrigger>
+                <TabsTrigger value="marketShare" className="data-[state=active]:bg-[#e94560]">Market Share</TabsTrigger>
+              </TabsList>
+              <TabsContent value="marketCap">
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#a0aec0" />
+                      <XAxis dataKey="date" stroke="#ffffff" />
+                      <YAxis stroke="#ffffff" />
+                      <Tooltip contentStyle={{ backgroundColor: '#16213e', borderColor: '#0f3460', color: '#ffffff' }} />
+                      <Legend />
+                      {Object.entries(chartConfig).map(([key, config]) => (
+                        <Line
+                          key={key}
+                          type="monotone"
+                          dataKey={key}
+                          stroke={config.color}
+                          name={config.label}
+                          strokeWidth={2}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </TabsContent>
+              <TabsContent value="trendAnalysis">
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={trendAnalysisData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#a0aec0" />
+                      <XAxis dataKey="date" stroke="#ffffff" />
+                      <YAxis stroke="#ffffff" />
+                      <Tooltip contentStyle={{ backgroundColor: '#16213e', borderColor: '#0f3460', color: '#ffffff' }} />
+                      <Legend />
+                      <Area type="monotone" dataKey="trendStrength" stroke={colorPalette.secondary} fill={colorPalette.secondary} fillOpacity={0.3} name="Trend Strength" />
+                      <Area type="monotone" dataKey="volatility" stroke={colorPalette.accent1} fill={colorPalette.accent1} fillOpacity={0.3} name="Volatility" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </TabsContent>
+              <TabsContent value="riskAssessment">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {altcoinSequence.map((coin) => (
+                    <Card key={coin.name} className="bg-[#16213e] border-[#0f3460]">
+                      <CardHeader>
+                        <CardTitle className="text-white">{coin.name}</CardTitle>
+                        <CardDescription className="text-[#a0aec0]">Risk Score: {coin.riskScore}/100</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Progress value={coin.riskScore} className="w-full" indicatorColor={colorPalette.accent2} />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+              <TabsContent value="marketShare">
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={altcoinSequence}
+                        dataKey="marketShare"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={150}
+                        fill={colorPalette.primary}
+                        label
+                      >
+                        {altcoinSequence.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={Object.values(chartConfig)[index + 1].color} />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#16213e', borderColor: '#0f3460', color: '#ffffff' }} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </TabsContent>
+            </Tabs>
+            <div className="mt-4">
+              <label className="text-sm font-medium text-white">Time Range</label>
+              <Slider
+                defaultValue={[0, 100]}
+                max={100}
+                step={1}
+                value={timeRange}
+                onValueChange={setTimeRange}
+                className="mt-2"
+              />
+            </div>
+            <div className="mt-4 flex items-center space-x-2">
+              <Switch
+                checked={showPredictions}
+                onCheckedChange={setShowPredictions}
+                id="show-predictions"
+              />
+              <label htmlFor="show-predictions" className="text-sm font-medium text-white">
+                Show Predictions
+              </label>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#16213e] border-[#0f3460]">
+          <CardHeader>
+            <CardTitle className="text-white">Advanced Altcoin Sequencing & Investment Strategy</CardTitle>
+            <CardDescription className="text-[#a0aec0]">Optimal order for altcoin investments based on historical trends, real-time momentum, and predictive modeling</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-white">Altcoin</TableHead>
+                  <TableHead className="text-white">Buy Signal</TableHead>
+                  <TableHead className="text-white">Exit Point</TableHead>
+                  <TableHead className="text-white">Momentum</TableHead>
+                  <TableHead className="text-white">Risk Score</TableHead>
+                  <TableHead className="text-white">Predicted Growth</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {altcoinSequence.map((coin) => (
+                  <TableRow key={coin.name}>
+                    <TableCell className="font-medium text-white">{coin.name}</TableCell>
+                    <TableCell className="text-white">{coin.buySignal}</TableCell>
+                    <TableCell className="text-white">{coin.exitPoint}</TableCell>
+                    <TableCell className="flex items-center gap-2 text-white">
+                      {coin.momentum}
+                      {coin.momentum === "High" && <TrendingUp className="h-4 w-4 text-[#00af91]" />}
+                    </TableCell>
+                    <TableCell className="text-white">{coin.riskScore}/100</TableCell>
+                    <TableCell className="text-white">{coin.predictedGrowth}%</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-[#16213e] border-[#0f3460]">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white">Total Market Cap</CardTitle>
+              <BarChart2 className="h-4 w-4 text-[#e94560]" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white">${chartData[chartData.length - 1].totalMarketCap}B</div>
+              <p className="text-xs text-[#a0aec0]">+{(((chartData[chartData.length - 1].totalMarketCap / chartData[0].totalMarketCap) - 1) * 100).toFixed(2)}% from start</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-[#16213e] border-[#0f3460]">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white">BTC Dominance</CardTitle>
+              <PieChartIcon className="h-4 w-4 text-[#f0a500]" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white">{chartData[chartData.length - 1].btcDominance}%</div>
+              <p className="text-xs text-[#a0aec0]">{((chartData[chartData.length - 1].btcDominance - chartData[0].btcDominance)).toFixed(2)}% change</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-[#16213e] border-[#0f3460]">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white">Market Trend</CardTitle>
+              <Activity className="h-4 w-4 text-[#00af91]" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white">{trendAnalysisData[trendAnalysisData.length - 1].trendStrength}/100</div>
+              <p className="text-xs text-[#a0aec0]">+{(trendAnalysisData[trendAnalysisData.length - 1].trendStrength - trendAnalysisData[0].trendStrength)} strength increase</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
