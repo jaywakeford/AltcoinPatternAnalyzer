@@ -64,18 +64,14 @@ def render_altcoin_analysis():
 
         # Create tabs for different analysis sections
         tabs = st.tabs([
-            "📊 Market Overview",
-            "📈 Market Structure"
+            "📊 Market Analysis"
         ])
         
-        # Market Overview Tab
+        # Market Analysis Tab
         with tabs[0]:
             _render_market_overview(df)
             _render_market_metrics(df)
             _render_sector_analysis(df)
-        
-        # Market Structure Tab
-        with tabs[1]:
             _render_market_structure(df)
             _render_risk_assessment(df)
             
@@ -90,9 +86,18 @@ def _render_market_overview(df: pd.DataFrame) -> None:
         total_market_cap = df['market_cap'].sum()
         total_volume = df['volume_24h'].sum()
         avg_change = df['change_24h'].mean()
-        volatility = df['change_24h'].std()
+        
+        # Add proper type conversion and validation for volatility
+        df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
+        volatility = df['volatility'].mean() if not df['volatility'].isna().all() else 0
+        
         avg_momentum = df['momentum'].mean()
         market_health = min(100, max(0, 50 + (avg_change * 2)))
+
+        # Validation check for volatility data
+        if df['volatility'].isna().all():
+            st.warning("Volatility data not available")
+            return
         
         # Create a row of 4 columns for the gauges
         col1, col2, col3, col4 = st.columns(4)
@@ -401,9 +406,15 @@ def _render_market_dominance(df: pd.DataFrame) -> None:
 def _render_momentum_gauge(momentum: float) -> None:
     """Render momentum gauge with enhanced styling."""
     try:
+        # Ensure momentum is a valid number
+        if pd.isna(momentum) or not isinstance(momentum, (int, float)):
+            momentum = 0
+            
+        momentum_normalized = min(40, max(-40, float(momentum)))
+        
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=momentum,
+            value=momentum_normalized,
             title={'text': "Market Momentum", 'font': {'color': THEME['text']}},
             gauge={
                 'axis': {'range': [-40, 40], 'tickcolor': THEME['muted']},
@@ -419,7 +430,7 @@ def _render_momentum_gauge(momentum: float) -> None:
                 'threshold': {
                     'line': {'color': THEME['text'], 'width': 4},
                     'thickness': 0.75,
-                    'value': momentum
+                    'value': momentum_normalized
                 }
             }
         ))
@@ -442,7 +453,11 @@ def _render_momentum_gauge(momentum: float) -> None:
 def _render_volatility_gauge(volatility: float) -> None:
     """Render volatility gauge with enhanced styling."""
     try:
-        volatility_normalized = min(100, max(0, volatility * 10))
+        # Ensure volatility is a valid number
+        if pd.isna(volatility) or not isinstance(volatility, (int, float)):
+            volatility = 0
+            
+        volatility_normalized = min(100, max(0, float(volatility) * 10))
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=volatility_normalized,
