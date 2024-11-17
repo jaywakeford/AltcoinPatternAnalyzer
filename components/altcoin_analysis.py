@@ -46,9 +46,13 @@ def render_altcoin_analysis():
                 return
             
             # Convert numeric columns
-            numeric_columns = ['market_cap', 'volume_24h', 'change_24h', 'momentum', 'volatility']
+            numeric_columns = ['market_cap', 'volume_24h', 'change_24h', 'momentum']
             for col in numeric_columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Add proper initialization and validation for volatility
+            df['volatility'] = df.get('volatility', pd.Series([0] * len(df)))
+            df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce').fillna(0)
             
             # Add sector classification
             df['sector'] = df['symbol'].apply(lambda x: next(
@@ -62,18 +66,12 @@ def render_altcoin_analysis():
                 st.warning("No valid market data available")
                 return
 
-        # Create tabs for different analysis sections
-        tabs = st.tabs([
-            "📊 Market Analysis"
-        ])
-        
-        # Market Analysis Tab
-        with tabs[0]:
-            _render_market_overview(df)
-            _render_market_metrics(df)
-            _render_sector_analysis(df)
-            _render_market_structure(df)
-            _render_risk_assessment(df)
+        # Create single Market Analysis tab for consolidated view
+        _render_market_overview(df)
+        _render_market_metrics(df)
+        _render_sector_analysis(df)
+        _render_market_structure(df)
+        _render_risk_assessment(df)
             
     except Exception as e:
         logger.error(f"Error in altcoin analysis: {str(e)}")
@@ -86,19 +84,10 @@ def _render_market_overview(df: pd.DataFrame) -> None:
         total_market_cap = df['market_cap'].sum()
         total_volume = df['volume_24h'].sum()
         avg_change = df['change_24h'].mean()
-        
-        # Add proper type conversion and validation for volatility
-        df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
-        volatility = df['volatility'].mean() if not df['volatility'].isna().all() else 0
-        
+        volatility = df['volatility'].mean()
         avg_momentum = df['momentum'].mean()
         market_health = min(100, max(0, 50 + (avg_change * 2)))
 
-        # Validation check for volatility data
-        if df['volatility'].isna().all():
-            st.warning("Volatility data not available")
-            return
-        
         # Create a row of 4 columns for the gauges
         col1, col2, col3, col4 = st.columns(4)
         
@@ -111,12 +100,13 @@ def _render_market_overview(df: pd.DataFrame) -> None:
         with col4:
             _render_correlation_gauge(df)
         
+        # Market Overview Section
+        st.subheader("Market Overview")
+        
         # Volume Analysis
-        st.subheader("Volume Analysis")
         _render_volume_distribution(df)
         
         # Market Dominance
-        st.subheader("Market Dominance")
         _render_market_dominance(df)
             
     except Exception as e:
@@ -458,6 +448,7 @@ def _render_volatility_gauge(volatility: float) -> None:
             volatility = 0
             
         volatility_normalized = min(100, max(0, float(volatility) * 10))
+        
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=volatility_normalized,
@@ -468,10 +459,9 @@ def _render_volatility_gauge(volatility: float) -> None:
                 'bgcolor': THEME['card_bg'],
                 'bordercolor': THEME['muted'],
                 'steps': [
-                    {'range': [0, 25], 'color': THEME['accent2']},
-                    {'range': [25, 50], 'color': THEME['accent1']},
-                    {'range': [50, 75], 'color': THEME['accent3']},
-                    {'range': [75, 100], 'color': THEME['secondary']}
+                    {'range': [0, 30], 'color': THEME['accent2']},
+                    {'range': [30, 70], 'color': THEME['accent1']},
+                    {'range': [70, 100], 'color': THEME['secondary']}
                 ],
                 'threshold': {
                     'line': {'color': THEME['text'], 'width': 4},
@@ -494,7 +484,7 @@ def _render_volatility_gauge(volatility: float) -> None:
 
     except Exception as e:
         logger.error(f"Error rendering volatility gauge: {str(e)}")
-        st.error("Unable to display volatility gauge")
+        st.warning("Unable to display volatility gauge")
 
 def _render_health_gauge(health: float) -> None:
     """Render market health gauge with enhanced styling."""
