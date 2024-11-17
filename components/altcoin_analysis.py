@@ -113,10 +113,14 @@ def render_altcoin_analysis(view_mode: Optional[str] = None):
             metrics_col1, metrics_col2 = st.columns(2)
             
             with metrics_col1:
-                _render_market_health(df_filtered)
+                _render_health_gauge(50 + df_filtered['change_24h'].mean())
             
             with metrics_col2:
                 _render_volatility_gauge(df_filtered['volatility'].mean())
+
+            # Momentum Section
+            st.subheader("Market Momentum")
+            _render_momentum_gauge(df_filtered['momentum'].mean())
             
             # Market Analysis Section
             st.subheader("Market Analysis")
@@ -134,18 +138,16 @@ def render_altcoin_analysis(view_mode: Optional[str] = None):
         logger.error(f"Error in altcoin analysis: {str(e)}")
         st.error("An error occurred while analyzing market data. Please try again.")
 
-def _render_market_health(df: pd.DataFrame) -> None:
-    """Render consolidated market health metrics."""
+def _render_momentum_gauge(momentum: float) -> None:
+    """Render momentum gauge."""
     try:
-        # Calculate health metrics
-        momentum = df['momentum'].mean()
-        change_24h = df['change_24h'].mean()
-        health_score = 50 + (momentum + change_24h) / 2
+        # Normalize momentum to 0-100 scale
+        momentum_normalized = min(100, max(0, float(50 + momentum)))
         
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=min(100, max(0, health_score)),
-            title={'text': "Market Health", 'font': {'color': THEME['text']}},
+            value=momentum_normalized,
+            title={'text': "Market Momentum", 'font': {'color': THEME['text']}},
             gauge={
                 'axis': {'range': [0, 100], 'tickcolor': THEME['muted']},
                 'bar': {'color': THEME['primary']},
@@ -159,7 +161,7 @@ def _render_market_health(df: pd.DataFrame) -> None:
                 'threshold': {
                     'line': {'color': THEME['text'], 'width': 4},
                     'thickness': 0.75,
-                    'value': health_score
+                    'value': momentum_normalized
                 }
             }
         ))
@@ -175,16 +177,51 @@ def _render_market_health(df: pd.DataFrame) -> None:
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Add additional metrics below
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("24h Change", f"{change_24h:.2f}%")
-        with col2:
-            st.metric("Momentum", f"{momentum:.2f}")
-            
     except Exception as e:
-        logger.error(f"Error rendering market health: {str(e)}")
-        st.warning("Unable to display market health")
+        logger.error(f"Error rendering momentum gauge: {str(e)}")
+        st.warning("Unable to display momentum gauge")
+
+def _render_health_gauge(health: float) -> None:
+    """Render market health gauge."""
+    try:
+        health_normalized = min(100, max(0, float(health)))
+        
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=health_normalized,
+            title={'text': "Market Health", 'font': {'color': THEME['text']}},
+            gauge={
+                'axis': {'range': [0, 100], 'tickcolor': THEME['muted']},
+                'bar': {'color': THEME['primary']},
+                'bgcolor': THEME['card_bg'],
+                'bordercolor': THEME['muted'],
+                'steps': [
+                    {'range': [0, 30], 'color': THEME['accent2']},
+                    {'range': [30, 70], 'color': THEME['accent1']},
+                    {'range': [70, 100], 'color': THEME['secondary']}
+                ],
+                'threshold': {
+                    'line': {'color': THEME['text'], 'width': 4},
+                    'thickness': 0.75,
+                    'value': health_normalized
+                }
+            }
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor=THEME['background'],
+            plot_bgcolor=THEME['card_bg'],
+            height=300,
+            margin=dict(l=20, r=20, t=30, b=20),
+            font={'color': THEME['text']}
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        logger.error(f"Error rendering health gauge: {str(e)}")
+        st.warning("Unable to display health gauge")
 
 def _render_volatility_gauge(volatility: float) -> None:
     """Render volatility gauge."""
@@ -418,60 +455,3 @@ def _render_sector_analysis(df: pd.DataFrame) -> None:
     except Exception as e:
         logger.error(f"Error rendering sector analysis: {str(e)}")
         st.warning("Unable to display sector analysis")
-
-def _render_risk_assessment(df: pd.DataFrame) -> None:
-    """Render risk assessment visualization."""
-    try:
-        # Calculate risk metrics
-        risk_data = df.copy()
-        risk_data['risk_score'] = (
-            risk_data['volatility'] * 0.4 +
-            abs(risk_data['change_24h']) * 0.3 +
-            (risk_data['volume_24h'] / risk_data['market_cap']) * 0.3
-        ) * 100
-        
-        # Normalize risk score
-        risk_data['risk_score'] = risk_data['risk_score'].clip(0, 100)
-        
-        # Create risk visualization
-        fig = go.Figure()
-        
-        # Add scatter plot
-        fig.add_trace(go.Scatter(
-            x=risk_data['volatility'],
-            y=risk_data['change_24h'],
-            mode='markers+text',
-            marker=dict(
-                size=risk_data['risk_score'],
-                color=risk_data['risk_score'],
-                colorscale='Viridis',
-                showscale=True,
-                colorbar=dict(title='Risk Score')
-            ),
-            text=risk_data['symbol'],
-            textposition='top center',
-            hovertemplate=(
-                '<b>%{text}</b><br>' +
-                'Volatility: %{x:.2f}<br>' +
-                'Change 24h: %{y:.2f}%<br>' +
-                'Risk Score: %{marker.size:.0f}<br>' +
-                '<extra></extra>'
-            )
-        ))
-        
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor=THEME['background'],
-            plot_bgcolor=THEME['card_bg'],
-            height=500,
-            title="Risk Assessment Matrix",
-            xaxis_title="Volatility",
-            yaxis_title="24h Change (%)",
-            showlegend=False
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-    except Exception as e:
-        logger.error(f"Error rendering risk assessment: {str(e)}")
-        st.warning("Unable to display risk assessment")
