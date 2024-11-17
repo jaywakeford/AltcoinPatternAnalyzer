@@ -49,55 +49,79 @@ def render_altcoin_analysis():
                 st.error("Unable to fetch cryptocurrency data. Please try again later.")
                 return
             
-            # Convert numeric columns and handle NaN values
+            # Convert numeric columns
             numeric_columns = ['market_cap', 'volume_24h', 'change_24h', 'momentum']
             for col in numeric_columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            
-            # Calculate volatility using standard deviation of price changes
-            df['volatility'] = df.groupby('symbol')['change_24h'].transform(
-                lambda x: x.std() if len(x) > 1 else 0
-            ).fillna(0)
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            df = df.fillna(0)  # Handle NaN values after conversion
             
             # Add sector classification
             df['sector'] = df['symbol'].apply(lambda x: next(
                 (sector for sector, coins in SECTORS.items() if x in coins), 'Other'
             ))
             
+            # Add filtering options
+            selected_pairs = st.multiselect(
+                "Select Trading Pairs",
+                options=df['symbol'].unique(),
+                default=['BTC'],
+                help="Search and select multiple trading pairs"
+            )
+            
+            selected_sectors = st.multiselect(
+                "Select Sectors",
+                options=df['sector'].unique(),
+                help="Filter by market sectors"
+            )
+            
+            # Filter data based on selection
+            df_filtered = df
+            if selected_pairs:
+                df_filtered = df[df['symbol'].isin(selected_pairs)]
+            elif selected_sectors:
+                df_filtered = df[df['sector'].isin(selected_sectors)]
+            
+            # Calculate volatility using rolling standard deviation
+            df_filtered['volatility'] = (
+                df_filtered.groupby('symbol')['change_24h']
+                .transform(lambda x: x.rolling(window=24, min_periods=1).std())
+                .fillna(0)
+            )
+            
             # Create market overview metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                _render_momentum_gauge(df['momentum'].mean())
+                _render_momentum_gauge(df_filtered['momentum'].mean())
             with col2:
-                _render_volatility_gauge(df['volatility'].mean())
+                _render_volatility_gauge(df_filtered['volatility'].mean())
             with col3:
-                _render_health_gauge(50 + df['change_24h'].mean())
+                _render_health_gauge(50 + df_filtered['change_24h'].mean())
             with col4:
-                _render_correlation_gauge(df)
+                _render_correlation_gauge(df_filtered)
             
             # Market structure
             st.subheader("Market Structure")
             col1, col2 = st.columns(2)
             with col1:
-                _render_market_dominance(df)
+                _render_market_dominance(df_filtered)
             with col2:
-                _render_volume_distribution(df)
+                _render_volume_distribution(df_filtered)
             
             # Sector analysis
             st.subheader("Sector Performance")
-            _render_sector_analysis(df)
+            _render_sector_analysis(df_filtered)
             
             # Risk assessment
             st.subheader("Risk Assessment")
-            _render_risk_assessment(df)
+            _render_risk_assessment(df_filtered)
             
     except Exception as e:
         logger.error(f"Error in altcoin analysis: {str(e)}")
         st.error("An error occurred while analyzing market data. Please try again.")
 
 def _render_momentum_gauge(momentum: float) -> None:
-    """Render momentum gauge with enhanced error handling."""
+    """Render momentum gauge."""
     try:
         # Normalize momentum to 0-100 scale
         momentum_normalized = min(100, max(0, float(50 + momentum)))
@@ -143,7 +167,7 @@ def _render_volatility_gauge(volatility: float) -> None:
     """Render volatility gauge."""
     try:
         # Scale volatility to 0-100
-        volatility_normalized = min(100, max(0, float(volatility * 10)))
+        volatility_normalized = min(100, max(0, float(volatility * 5)))
         
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
@@ -407,7 +431,7 @@ def _render_sector_analysis(df: pd.DataFrame) -> None:
 def _render_risk_assessment(df: pd.DataFrame) -> None:
     """Render risk assessment."""
     try:
-        # Calculate risk scores with proper scaling
+        # Calculate risk scores
         df['risk_score'] = (
             df['volatility'] * 0.4 +
             abs(df['change_24h']) * 0.3 +
@@ -425,8 +449,9 @@ def _render_risk_assessment(df: pd.DataFrame) -> None:
             with cols[i % 3]:
                 st.metric(
                     label=f"{coin['symbol']} Risk Score",
-                    value=f"{coin['risk_score']:.0f}/100",
-                    delta=f"{coin['change_24h']:.2f}%"
+                    value=f"{coin['risk_score']:.1f}",
+                    delta=f"{coin['change_24h']:.1f}%",
+                    delta_color="normal"
                 )
                 
     except Exception as e:

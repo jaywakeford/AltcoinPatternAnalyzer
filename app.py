@@ -80,19 +80,19 @@ def main():
         if not sidebar_config:
             st.warning("Please configure analysis settings in the sidebar")
             return
-            
-        # Create main tabs
-        market_tab, strategy_tab = st.tabs([
+        
+        # Create main tabs - Removed duplicate momentum tab
+        tabs = st.tabs([
             "📊 Market Analysis",
             "⚙️ Strategy Builder"
         ])
         
         # Market Analysis Tab
-        with market_tab:
+        with tabs[0]:
             render_altcoin_analysis()
         
         # Strategy Builder Tab
-        with strategy_tab:
+        with tabs[1]:
             render_backtesting_section()
             
     except Exception as e:
