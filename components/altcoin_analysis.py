@@ -57,7 +57,10 @@ def render_altcoin_analysis(view_mode: Optional[str] = None) -> None:
             )
 
         with col2:
-            if st.button("🔄 Refresh Data", help="Update market data"):
+            if st.button("🔄 Refresh Data", 
+                help="Update market data",
+                key=f"refresh_button_{view_mode}"  # Add unique key for each view mode
+            ):
                 st.experimental_rerun()
         
         if not selected_assets:
@@ -190,10 +193,32 @@ def _render_volatility_gauge(volatility: float) -> None:
 
 def _render_correlation_gauge(df: pd.DataFrame, selected_assets: List[str]) -> None:
     try:
-        # Get BTC data first
+        # Validate input data
+        if df.empty:
+            logger.warning("Empty dataframe provided for correlation calculation")
+            st.warning("No data available for correlation calculation")
+            return
+
+        # Data validation
+        required_columns = ['symbol', 'change_24h', 'momentum']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            logger.error(f"Missing required columns: {missing_columns}")
+            st.warning("Required data columns missing for correlation calculation")
+            return
+
+        # Get BTC data first with validation
         btc_data = df[df['symbol'] == 'BTC']
         if btc_data.empty:
+            logger.warning("BTC data not available in dataframe")
             st.warning("BTC data not available for correlation calculation")
+            return
+            
+        # Validate BTC data columns
+        btc_nulls = btc_data[['change_24h', 'momentum']].isnull().any()
+        if btc_nulls.any():
+            logger.warning("BTC data contains null values")
+            st.warning("Incomplete BTC data for correlation calculation")
             return
             
         correlations = []
