@@ -1,0 +1,182 @@
+:root {
+  --primary-color: #1a73e8;
+  --error-color: #d93025;
+  --background-color: #f8f9fa;
+  --text-color: #202124;
+  --chart-color: #1a73e8;
+  --tooltip-bg: rgba(255, 255, 255, 0.95);
+  --tooltip-border: rgba(0, 0, 0, 0.1);
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.app-header {
+  margin-bottom: 2rem;
+}
+
+h1 {
+  color: var(--primary-color);
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.error-message {
+  background-color: var(--error-color);
+  color: white;
+  padding: 1rem;
+  border-radius: 4px;
+  margin: 1rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-message button {
+  background: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--error-color);
+  font-weight: bold;
+}
+
+.waterfall-chart-container {
+  position: relative;
+  width: 100%;
+}
+
+.waterfall-chart {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin: 1rem 0;
+  width: 100%;
+  height: 600px;
+  min-height: 500px;
+}
+
+.waterfall-chart svg {
+  width: 100%;
+  height: 100%;
+}
+
+.waterfall-chart .line {
+  fill: none;
+  stroke: var(--chart-color);
+  stroke-width: 2;
+  transition: stroke-width 0.2s ease;
+}
+
+.waterfall-chart .area {
+  transition: opacity 0.2s ease;
+}
+
+.waterfall-chart .dot {
+  fill: var(--chart-color);
+  stroke: white;
+  stroke-width: 2;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.waterfall-chart .dot:hover {
+  stroke-width: 3;
+}
+
+.waterfall-chart .x-axis,
+.waterfall-chart .y-axis {
+  color: var(--text-color);
+}
+
+.waterfall-chart .x-axis line,
+.waterfall-chart .y-axis line,
+.waterfall-chart .grid-lines line {
+  stroke: #e0e0e0;
+}
+
+.waterfall-chart .x-axis path,
+.waterfall-chart .y-axis path {
+  stroke: #e0e0e0;
+}
+
+.waterfall-chart text {
+  font-size: 12px;
+  color: var(--text-color);
+}
+
+.waterfall-chart .x-label,
+.waterfall-chart .y-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.waterfall-chart .chart-title {
+  font-size: 16px;
+  font-weight: 600;
+  fill: var(--text-color);
+}
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  border-radius: 4px;
+  padding: 0.75rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-size: 0.875rem;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tooltip-date {
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-bottom: 0.25rem;
+}
+
+.tooltip-value,
+.tooltip-price,
+.tooltip-volume {
+  color: var(--text-color);
+}
+
+@media (max-width: 768px) {
+  .app {
+    padding: 1rem;
+  }
+
+  .waterfall-chart {
+    padding: 1rem;
+    height: 400px;
+    min-height: 300px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+} 

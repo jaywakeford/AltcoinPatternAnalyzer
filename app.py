@@ -8,7 +8,13 @@ from styles.theme import apply_custom_theme
 from components.sidebar import render_sidebar
 from components.altcoin_analysis import render_altcoin_analysis
 from components.backtesting import render_backtesting_section
+from components.portfolio_tracker import render_portfolio_section
 from utils.symbol_converter import SymbolConverter
+from utils.technical_indicators import TechnicalIndicators
+from utils.social_sentiment import render_sentiment_section
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Configure logging
 logging.basicConfig(
@@ -91,37 +97,147 @@ def main():
         main_tabs = st.tabs([
             "📊 Market Analysis",
             "📈 Historical Analysis",
+            "💼 Portfolio Tracker",
+            "📊 Technical Analysis",
+            "🗣️ Social Sentiment",
             "⚙️ Strategy Builder"
         ])
         
-        # Market Analysis Tab (consolidated with momentum)
+        # Market Analysis Tab
         with main_tabs[0]:
             try:
                 render_altcoin_analysis(view_mode="real-time")
             except Exception as e:
-                logger.error(f"Error rendering market analysis: {str(e)}")
-                st.error("Unable to load market analysis. Please try refreshing the page.")
-        
+                logger.error(f"Error in market analysis tab: {str(e)}")
+                st.error("Error loading market analysis")
+
         # Historical Analysis Tab
         with main_tabs[1]:
             try:
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input("Start Date", datetime.now().date())
-                with col2:
-                    end_date = st.date_input("End Date", datetime.now().date())
                 render_altcoin_analysis(view_mode="historical")
             except Exception as e:
-                logger.error(f"Error rendering historical analysis: {str(e)}")
-                st.error("Unable to load historical analysis. Please try refreshing the page.")
-        
-        # Strategy Builder Tab
+                logger.error(f"Error in historical analysis tab: {str(e)}")
+                st.error("Error loading historical analysis")
+
+        # Portfolio Tracker Tab
         with main_tabs[2]:
+            try:
+                render_portfolio_section()
+            except Exception as e:
+                logger.error(f"Error in portfolio tracker tab: {str(e)}")
+                st.error("Error loading portfolio tracker")
+
+        # Technical Analysis Tab
+        with main_tabs[3]:
+            try:
+                selected_symbol = st.selectbox(
+                    "Select Cryptocurrency",
+                    ["BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT", "ADA/USDT"]
+                )
+                timeframe = st.selectbox(
+                    "Select Timeframe",
+                    ["1d", "4h", "1h", "15m"]
+                )
+                
+                if selected_symbol and timeframe:
+                    exchange_manager = ExchangeManager()
+                    data = exchange_manager.get_historical_data(selected_symbol, timeframe)
+                    
+                    if not data.empty:
+                        data = TechnicalIndicators.add_all_indicators(data)
+                        
+                        # Create technical analysis charts
+                        fig = make_subplots(
+                            rows=3, cols=1,
+                            shared_xaxes=True,
+                            vertical_spacing=0.05,
+                            row_heights=[0.5, 0.25, 0.25]
+                        )
+                        
+                        # Price and MA Chart
+                        fig.add_trace(go.Candlestick(
+                            x=data.index,
+                            open=data['open'],
+                            high=data['high'],
+                            low=data['low'],
+                            close=data['close'],
+                            name='Price'
+                        ), row=1, col=1)
+                        
+                        # Add Moving Averages
+                        for ma in [20, 50, 200]:
+                            fig.add_trace(go.Scatter(
+                                x=data.index,
+                                y=data[f'SMA_{ma}'],
+                                name=f'SMA {ma}',
+                                line=dict(width=1)
+                            ), row=1, col=1)
+                        
+                        # Volume Chart
+                        fig.add_trace(go.Bar(
+                            x=data.index,
+                            y=data['volume'],
+                            name='Volume'
+                        ), row=2, col=1)
+                        
+                        # RSI Chart
+                        fig.add_trace(go.Scatter(
+                            x=data.index,
+                            y=data['RSI'],
+                            name='RSI'
+                        ), row=3, col=1)
+                        
+                        # Update layout
+                        fig.update_layout(
+                            title=f'{selected_symbol} Technical Analysis',
+                            xaxis_title='Date',
+                            height=800,
+                            template='plotly_dark'
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Display additional indicators
+                        with st.expander("View All Technical Indicators"):
+                            indicators_df = pd.DataFrame({
+                                'MACD': data['MACD'].iloc[-1],
+                                'RSI': data['RSI'].iloc[-1],
+                                'Stochastic K': data['Stoch_K'].iloc[-1],
+                                'Stochastic D': data['Stoch_D'].iloc[-1],
+                                'Williams %R': data['Williams_R'].iloc[-1],
+                                'MFI': data['MFI'].iloc[-1],
+                                'OBV': data['OBV'].iloc[-1],
+                                'ATR': data['ATR'].iloc[-1]
+                            }, index=[0])
+                            
+                            st.dataframe(indicators_df.style.format("{:.2f}"))
+                    else:
+                        st.warning("No data available for the selected symbol and timeframe")
+                        
+            except Exception as e:
+                logger.error(f"Error in technical analysis tab: {str(e)}")
+                st.error("Error loading technical analysis")
+
+        # Social Sentiment Tab
+        with main_tabs[4]:
+            try:
+                selected_symbol = st.selectbox(
+                    "Select Cryptocurrency for Sentiment Analysis",
+                    ["BTC", "ETH", "BNB", "SOL", "ADA"]
+                )
+                if selected_symbol:
+                    render_sentiment_section(selected_symbol)
+            except Exception as e:
+                logger.error(f"Error in sentiment analysis tab: {str(e)}")
+                st.error("Error loading sentiment analysis")
+
+        # Strategy Builder Tab
+        with main_tabs[5]:
             try:
                 render_backtesting_section()
             except Exception as e:
-                logger.error(f"Error rendering strategy builder: {str(e)}")
-                st.error("Unable to load strategy builder. Please try refreshing the page.")
+                logger.error(f"Error in strategy builder tab: {str(e)}")
+                st.error("Error loading strategy builder")
             
     except Exception as e:
         logger.error(f"Critical error in main application: {str(e)}")
