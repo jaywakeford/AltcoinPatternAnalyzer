@@ -1,182 +1,118 @@
 :root {
-  --primary-color: #1a73e8;
-  --error-color: #d93025;
-  --background-color: #f8f9fa;
-  --text-color: #202124;
-  --chart-color: #1a73e8;
-  --tooltip-bg: rgba(255, 255, 255, 0.95);
-  --tooltip-border: rgba(0, 0, 0, 0.1);
+  --primary-color: #1a1a1a;
+  --secondary-color: #646cff;
+  --background-color: #242424;
+  --text-color: rgba(255, 255, 255, 0.87);
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
+  min-height: 100vh;
   background-color: var(--background-color);
   color: var(--text-color);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
 .app {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
+  text-align: center;
 }
 
 .app-header {
   margin-bottom: 2rem;
 }
 
-h1 {
-  color: var(--primary-color);
-  margin: 0 0 1rem;
-  font-size: 2rem;
-  font-weight: 600;
-}
-
 .error-message {
-  background-color: var(--error-color);
+  background-color: #ff4444;
   color: white;
   padding: 1rem;
-  border-radius: 4px;
   margin: 1rem 0;
+  border-radius: 4px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .error-message button {
-  background: white;
-  border: none;
+  background: transparent;
+  border: 1px solid white;
+  color: white;
   padding: 0.5rem 1rem;
-  border-radius: 4px;
   cursor: pointer;
-  color: var(--error-color);
-  font-weight: bold;
+  border-radius: 4px;
 }
 
-.waterfall-chart-container {
-  position: relative;
-  width: 100%;
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1.2rem;
+}
+
+.no-data {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.2rem;
+  color: #888;
 }
 
 .waterfall-chart {
-  background: white;
-  padding: 1.5rem;
+  background: var(--primary-color);
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
   margin: 1rem 0;
-  width: 100%;
-  height: 600px;
-  min-height: 500px;
-}
-
-.waterfall-chart svg {
-  width: 100%;
-  height: 100%;
-}
-
-.waterfall-chart .line {
-  fill: none;
-  stroke: var(--chart-color);
-  stroke-width: 2;
-  transition: stroke-width 0.2s ease;
-}
-
-.waterfall-chart .area {
-  transition: opacity 0.2s ease;
-}
-
-.waterfall-chart .dot {
-  fill: var(--chart-color);
-  stroke: white;
-  stroke-width: 2;
-  transition: all 0.2s ease;
-  cursor: pointer;
-}
-
-.waterfall-chart .dot:hover {
-  stroke-width: 3;
-}
-
-.waterfall-chart .x-axis,
-.waterfall-chart .y-axis {
-  color: var(--text-color);
-}
-
-.waterfall-chart .x-axis line,
-.waterfall-chart .y-axis line,
-.waterfall-chart .grid-lines line {
-  stroke: #e0e0e0;
-}
-
-.waterfall-chart .x-axis path,
-.waterfall-chart .y-axis path {
-  stroke: #e0e0e0;
-}
-
-.waterfall-chart text {
-  font-size: 12px;
-  color: var(--text-color);
-}
-
-.waterfall-chart .x-label,
-.waterfall-chart .y-label {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.waterfall-chart .chart-title {
-  font-size: 16px;
-  font-weight: 600;
-  fill: var(--text-color);
 }
 
 .tooltip {
   position: absolute;
-  pointer-events: none;
-  background: var(--tooltip-bg);
-  border: 1px solid var(--tooltip-border);
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
   border-radius: 4px;
-  padding: 0.75rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  font-size: 0.875rem;
-  transition: opacity 0.2s ease;
-  z-index: 1000;
+  pointer-events: none;
+  font-size: 12px;
+  z-index: 100;
 }
 
-.tooltip-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+/* D3 Chart Styles */
+.line {
+  fill: none;
+  stroke: var(--secondary-color);
+  stroke-width: 2;
 }
 
-.tooltip-date {
-  font-weight: 600;
-  color: var(--primary-color);
-  margin-bottom: 0.25rem;
+.dot {
+  fill: var(--secondary-color);
+  stroke: white;
+  stroke-width: 1;
 }
 
-.tooltip-value,
-.tooltip-price,
-.tooltip-volume {
-  color: var(--text-color);
+.grid-lines line {
+  stroke: #444;
+  stroke-opacity: 0.2;
 }
 
-@media (max-width: 768px) {
-  .app {
-    padding: 1rem;
-  }
+.x-axis path,
+.y-axis path,
+.x-axis line,
+.y-axis line {
+  stroke: #666;
+}
 
-  .waterfall-chart {
-    padding: 1rem;
-    height: 400px;
-    min-height: 300px;
-  }
+.x-axis text,
+.y-axis text {
+  fill: #888;
+  font-size: 12px;
+}
 
-  h1 {
-    font-size: 1.5rem;
-  }
+.chart-title {
+  fill: var(--text-color);
+  font-size: 16px;
+  font-weight: bold;
 } 
