@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AltcoinPatternAnalyzer
 
 A sophisticated real-time cryptocurrency analysis platform that provides comprehensive market monitoring, technical analysis, and trading strategy development capabilities through a streamlined web interface.
@@ -56,3 +57,6 @@ src/
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+=======
+# AltcoinPatternAnalyzer
+>>>>>>> c0362e8590f8ff45f90fff309c7172eb269f52dc
