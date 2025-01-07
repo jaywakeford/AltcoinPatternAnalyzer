@@ -3,10 +3,13 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "homepage": "https://jaywakeford.github.io/AltcoinPatternAnalyzer/",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "d3": "^7.9.0",
@@ -16,9 +19,10 @@
   "devDependencies": {
     "@types/d3": "^7.4.3",
     "@types/node": "^20.17.9",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^18.3.14",
+    "@types/react-dom": "^18.3.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "gh-pages": "^6.1.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.11"
   },
